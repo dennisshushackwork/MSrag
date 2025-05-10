@@ -1,0 +1,12 @@
+python-dotenv
+networkx
+rustworkx
+psycopg2
+docling
+requests
+torch
+transformers
+accelerate
+sentence-transformers
+graspologic
+kuzu

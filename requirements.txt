@@ -9,4 +9,5 @@ transformers
 accelerate
 sentence-transformers
 graspologic
+nltk
 kuzu

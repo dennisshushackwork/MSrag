@@ -82,7 +82,8 @@ class Embedder:
         # The tokenizer will warn and truncate to its own model_max_length if self.max_tokens is larger.
         encoding = self.tokenizer(
             text,
-            truncation=False,
+            padding=False,
+            truncation=True,
             max_length=self.max_tokens,
             add_special_tokens=False  # Adds [CLS] and [SEP] tokens
         )
@@ -98,14 +99,24 @@ class Embedder:
 
 
 if __name__ == '__main__':
-    query1 = "Dennis Shushack"
+    document = """Hello my name is Dennis. I am a cool guy, looking for an improvement of my life.
+                  Please make sure to include the best things into my name. What is the derivative of 5?
+                  Born in Honolulu, Hawaii, Obama graduated from Columbia University in 1983 with a Bachelor of 
+                  Arts degree in political science and later worked as a community organizer in Chicago. In 1988, 
+                  Obama enrolled in Harvard Law School, where he was the first black president of the Harvard Law Review.
+                  He became a civil rights attorney and an academic, teaching constitutional law at the University 
+                  of Chicago Law School from 1992 to 2004. In 1996, Obama was elected to represent the 13th district 
+                  in the Illinois Senate, a position he held until 2004, when he successfully ran for the U.S. Senate. 
+                  In the 2008 presidential election, after a close primary campaign against Hillary Clinton, he was 
+                  nominated by the Democratic Party for president. Obama selected Joe Biden as his running mate and 
+                  defeated Republican nominee John McCain and his running mate Sarah Palin."""
     query2 = "Dennis Shushack"
     query3 = "Colin Shushack"
     query4 = "Dennis Shushack"
     embedding = Embedder()
-    emb1, emb2 = embedding.embed_texts([query1, query2])
+    emb1, emb2 = embedding.embed_texts([document, query2])
     print(embedding.cosine_similarity(emb1, emb2))
-    tokens = embedding.tokenize_to_ids(query3)
+    tokens = embedding.tokenize_to_ids(document)
     print(tokens)
     print(embedding.decode_tokens(tokens))
     print(embedding.count_tokens(query3))

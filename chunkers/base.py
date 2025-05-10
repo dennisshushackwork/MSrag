@@ -3,7 +3,7 @@ from typing import List
 from abc import ABC, abstractmethod
 
 # Internal imports:
-from embedder.embedder import Embedder
+from emb.embedder import Embedder
 
 class BaseChunker(ABC):
     """

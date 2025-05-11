@@ -41,6 +41,8 @@ class KuzuGraphStore(Postgres):
         self._connect_kuzu()
         self._init_postgres_extension()
         self._init_schema_if_needed()
+        if recreate_db:
+            self.load_graph_data()
 
     def _connect_kuzu(self):
         """Establishes KuzuDB connections (both sync and async)."""
@@ -158,6 +160,27 @@ class KuzuGraphStore(Postgres):
         except Exception as e:
             logger.error(f"Error loading graph data into KuzuDB: {e}")
             raise
+
+        # In KuzuGraphStore class:
+
+    def __enter__(self):
+        """
+        Enter the runtime context related to this object.
+        The Kuzu connections are already established in __init__.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Exit the runtime context related to this object.
+        Ensures database resources are cleaned up.
+        """
+        self.cleanup()
+        # If an exception occurred, you might want to log it or handle it.
+        # Returning False (or nothing, which defaults to False) will re-raise the exception
+        # if one occurred within the 'with' block.
+        # Return True to suppress the exception.
+        return False  # Or handle as needed
 
     def cleanup(self):
         """

@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS Document (
     created_at    TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
-
 -- Chunks
 CREATE TABLE IF NOT EXISTS Chunk (
     chunk_id          SERIAL PRIMARY KEY,

@@ -175,3 +175,7 @@ cython_debug/
 
 # Ignore graph database:
 graphdb/graphdb
+graphdb/graphdb/data.kz
+graphdb/graphdb/catalog.kz
+graphdb/graphdb/catalog.kz
+graphdb/graphdb/data.kz

@@ -39,9 +39,9 @@ class KuzuGraphStore(Postgres):
 
         # Create and connect the database:
         self._connect_kuzu()
-        self._init_postgres_extension()
-        self._init_schema_if_needed()
         if recreate_db:
+            self._init_postgres_extension()
+            self._init_schema_if_needed()
             self.load_graph_data()
 
     def _connect_kuzu(self):

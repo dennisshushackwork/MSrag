@@ -2,7 +2,6 @@
 This is a Service Class for Chunking.
 It chunks the data and saves it in the Postgres Database.
 """
-
 # External Imports:
 import logging
 from typing import Literal, List
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChunkingService:
-    def __init__(self, doc: str, chunk_type: Literal["token", "recursive"], chunk_size: int = 400,
+    def __init__(self, doc: str, chunk_type: Literal["token", "recursive", "sentence"], chunk_size: int = 400,
                  chunk_overlap: int = 100, doc_id: int = 1):
         self.doc = doc
         self.doc_id = doc_id

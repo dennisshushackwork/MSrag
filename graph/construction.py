@@ -6,7 +6,6 @@ the input text chunks. Its main goal is to:
 3. Embedd all the entities and relationships inside the Postgres database.
 4. Provide a fallback mechanism for chunk processing.
 """
-
 # External Imports:
 import time
 import logging

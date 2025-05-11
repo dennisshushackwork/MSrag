@@ -63,7 +63,7 @@ class Embedder:
                 outputs = self.model(**batch_dict)
             embeddings = outputs.last_hidden_state[:, 0]
             embeddings_normalized = F.normalize(embeddings, p=2, dim=1)
-            return embeddings_normalized.detach().numpy()
+            return embeddings_normalized.detach().numpy().tolist()
         except Exception as e:
             logger.error("An error occurred during the embedding: {}".format(e))
             raise

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 
 # Internal imports:
-#from api.postgres.base import Postgres
+from postgres.base import Postgres
 
 # Load environmental variables & logging
 load_dotenv()

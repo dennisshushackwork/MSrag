@@ -85,7 +85,7 @@ class RecursiveChunker(BaseChunker):
             return []
 
         # Base case: if we're at the last separator or text is small enough
-        if len(separators) == 1 or self.estimate_tokens(text) <= self.chunk_size:
+        if len(separators) == 1 or self.count_tokens(text) <= self.chunk_size:
             return [text] if text else []
 
         # Find first separator that splits the text
@@ -108,7 +108,7 @@ class RecursiveChunker(BaseChunker):
         current_length = 0
 
         for split in splits:
-            split_length = self.estimate_tokens(split)
+            split_length = self.count_tokens(split)
 
             # Length validation: If this split alone exceeds chunk size, try splitting further
             if split_length > self.chunk_size:
@@ -165,7 +165,7 @@ class RecursiveChunker(BaseChunker):
                     overlap_text = self.detokenize(overlap_tokens)
 
                     # Only add overlap if it doesn't make the chunk too large
-                    if self.estimate_tokens(overlap_text + current_chunk) <= self.chunk_size:
+                    if self.count_tokens(overlap_text + current_chunk) <= self.chunk_size:
                         current_chunk = overlap_text + current_chunk
 
                 result.append(current_chunk)
@@ -194,7 +194,7 @@ class RecursiveChunker(BaseChunker):
                 continue
 
             # Check token count (skip chunks with too few tokens)
-            chunk_tokens = self.estimate_tokens(chunk)
+            chunk_tokens = self.count_tokens(chunk)
             if chunk_tokens < MIN_TOKENS:
                 continue
 
@@ -215,7 +215,7 @@ class RecursiveChunker(BaseChunker):
                             if len(cleaned_small) < MIN_CHUNK_LENGTH or len(small_chunk) < MIN_CHUNK_LENGTH:
                                 continue
 
-                            small_tokens = self.estimate_tokens(small_chunk)
+                            small_tokens = self.count_tokens(small_chunk)
                             if small_tokens < MIN_TOKENS:
                                 continue
 
@@ -227,7 +227,7 @@ class RecursiveChunker(BaseChunker):
                                 for i in range(0, len(small_chunk), self.chunk_size // 4):
                                     fragment = small_chunk[i:i + self.chunk_size // 4]
                                     if fragment.strip() and len(fragment) >= MIN_CHUNK_LENGTH:
-                                        fragment_tokens = self.estimate_tokens(fragment)
+                                        fragment_tokens = self.count_tokens(fragment)
                                         if fragment_tokens >= MIN_TOKENS:
                                             smaller_processed.append(fragment)
 
@@ -239,7 +239,7 @@ class RecursiveChunker(BaseChunker):
                     tokens = self.tokenize(chunk)[:self.chunk_size]
                     truncated = self.detokenize(tokens)
                     if truncated.strip() and len(truncated) >= MIN_CHUNK_LENGTH:
-                        truncated_tokens = self.estimate_tokens(truncated)
+                        truncated_tokens = self.count_tokens(truncated)
                         if truncated_tokens >= MIN_TOKENS:
                             validated.append(truncated)
             else:
@@ -261,7 +261,7 @@ class RecursiveChunker(BaseChunker):
                 continue
 
             # Calculate token count
-            token_count = self.estimate_tokens(chunk_text)
+            token_count = self.count_tokens(chunk_text)
 
             # Skip chunks that are too large (this should not happen with proper validation)
             if token_count > self.chunk_size:

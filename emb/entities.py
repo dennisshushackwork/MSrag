@@ -73,7 +73,7 @@ class EntityEmbedder:
         Returns the number of processed entities.
         """
         # Each thread instantiates its own embedder
-        embedder = EmbeddingService()
+        embedder = Embedder()
 
         # Gets all the entities to embed:
         entities_to_embed = [e for e in batch]

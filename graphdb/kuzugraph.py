@@ -111,12 +111,14 @@ class KuzuGraphStore(Postgres):
 
             self.connection.execute(
                 """CREATE NODE TABLE IF NOT EXISTS Entity(
-                    id INT PRIMARY KEY
+                    id INT64 PRIMARY KEY
+                    
                 )"""
             )
             self.connection.execute(
                 """CREATE REL TABLE IF NOT EXISTS Relationship(
-                    FROM Entity TO Entity
+                    FROM Entity TO Entity,
+                    id INT64 PRIMARY KEY
                 )"""
             )
             logger.info("Kuzu schema initialized successfully.")
@@ -151,7 +153,7 @@ class KuzuGraphStore(Postgres):
             self.connection.execute("""
                 COPY Relationship FROM (
                     LOAD FROM Relationship
-                    RETURN from_entity, to_entity
+                    RETURN from_entity, to_entity, rel_id
                 )
             """)
             logger.info("Relationships copied successfully.")

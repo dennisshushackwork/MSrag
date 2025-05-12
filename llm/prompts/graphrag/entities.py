@@ -18,9 +18,7 @@ class EntityExtractor:
 
         return f"""
         Extract all named entities from the text below. 
-        Entities include but are not limited to persons, organizations, 
-        locations, dates, concepts, roles/titles, etc.
-
+       
         Input Text:
         {self.query}
 

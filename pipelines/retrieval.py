@@ -21,6 +21,19 @@ from llm.prompts.graphrag.entities import EntityExtractor
 from emb.embedder import Embedder
 from postgres.retrieval import RetrievalQueries
 
+
+def define_top_k(entity_count: int):
+    """Defines the number of top-k similar entities extracted from the database, based
+    on the number of entities"""
+    if entity_count < 3: # Up to 15 starting entities
+        top_k = 5
+    elif 3 < entity_count < 5: # Up to 15 starting entities
+        top_k = 3
+    else:
+        top_k = 2
+    return top_k
+
+
 class Retriever:
     """
     The user formulates a query. With this query we find the top-k most similar chunks
@@ -67,8 +80,32 @@ class Retriever:
         rag_prompt = RagPrompt(query, context=text_chunks)
         client = LLMClient(rag_prompt.system_prompt,rag_prompt.human_prompt, temperature=0.7, provider=self.model)
         response = client.send_message()
+        print(response)
         end = time.time()
         print(end - start)
+
+    # --------------- Graph-RAG ------------------- #
+
+    def graph_retrieval(self, query: str):
+        """Performs normal graphrag on the database"""
+
+        # Step 1: Extract all the entities from the user query:
+        extractor = EntityExtractor(query=query, model=self.model)
+        entities = extractor.extract_entities()
+        entity_count = len(entities)
+        top_k = define_top_k(entity_count)
+
+        # Step 2: Embedd the entities:
+        entities_embedding = self.embedder.embed_texts(entities)
+
+        # Step 3: Get the entity_ids from the database:
+
+
+
+
+
+
+
 
 
 
@@ -77,7 +114,8 @@ class Retriever:
 
 if __name__ == '__main__':
     rag = Retriever(model="openai")
-    response = rag.chunk_retrieval(query="Who is obama's wife?", chunking_method="recursive")
+    #response = rag.chunk_retrieval(query="Who is obama's wife?", chunking_method="recursive")
+    rag.graph_retrieval(query="Who is Michelle Obama? What is the wife of Obama?")
 
     #rag.graph_retrieval('Who is Obamas wife?', 'recursive', limit=60)        text_chunks = [chunk['content'] for chunk in context_chunks]
 

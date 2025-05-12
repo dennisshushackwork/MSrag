@@ -153,7 +153,7 @@ class KuzuGraphStore(Postgres):
             self.connection.execute("""
                 COPY Relationship FROM (
                     LOAD FROM Relationship
-                    RETURN from_entity, to_entity, rel_id
+                    RETURN from_entity, to_entity, rel_id AS id
                 )
             """)
             logger.info("Relationships copied successfully.")

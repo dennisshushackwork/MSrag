@@ -6,112 +6,7 @@ Graph Database with optimized undirected BFS for external calling using Kuzu's a
 import time
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional
-
-# Internal imports:
-from graphdb.kuzugraph import KuzuGraphStore
-
-# Set the logger:
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-class MyGraphService(KuzuGraphStore):
-    """
-    This class implements the undirected BFS algorithm with optimizations
-    for external calling using Kuzu's async API.
-    """
-    def __init__(self, recreate_db: bool = False):
-        super().__init__(recreate_db)
-        logger.info("MyGraphService initialized and KuzuGraphStore is set up.")
-
-    def get_entity_count(self) -> int:
-        """Returns the number of entities in the database"""
-        query = "MATCH (e:Entity) RETURN count(e) as count"
-        result = self.connection.execute(query)
-        count = result.get_next()[0] if result.has_next() else 0
-        return count
-
-    def get_relationship_count(self) -> int:
-        """Returns the number of relationships in the database"""
-        query = "MATCH ()-[r:Relationship]->() RETURN count(r)"
-        result = self.connection.execute(query)
-        count = result.get_next()[0] if result.has_next() else 0
-        return count
-
-    @staticmethod
-    def undirected_bfs(start_entity_id: int, depth: int) -> str:
-        """
-        Creates an undirected BFS query for relationship IDs.
-        Args:
-            start_entity_id: The ID of the starting entity
-            depth: Maximum BFS depth to traverse
-        """
-        query = f"""
-                  MATCH path = (start:Entity {{id: {start_entity_id}}})-[:Relationship*1..{depth}]-(:Entity)
-                  UNWIND relationships(path) AS rel
-                  WITH rel, min(length(path)) AS min_path_len
-                  RETURN DISTINCT rel.id AS relationship_id
-                  ORDER BY min_path_len, relationship_id
-                  """
-        return query
-
-    async def perform_undirected_bfs_async(self, start_entity_id: int, max_depth: int = 2):
-        """
-        Performs an undirected BFS asynchronously.
-        """
-        query = self.undirected_bfs(start_entity_id, max_depth)
-        result = await self.async_connection.execute(query)
-        return result, start_entity_id
-
-    async def run_multiple_bfs_searches(self, entity_ids: List[int], max_depth: int = 2) -> Dict[
-        int, List[Dict[str, int]]]:
-        """
-        Runs multiple undirected BFS searches in parallel.
-        """
-        logger.info(f"Running {len(entity_ids)} parallel undirected BFS searches...")
-        start_time = time.time()
-
-        # Create tasks for all BFS operations
-        tasks = [self.perform_undirected_bfs_async(entity_id, max_depth) for entity_id in entity_ids]
-
-        # Run all tasks concurrently
-        results = await asyncio.gather(*tasks)
-
-        # Process results
-        processed_results = {}
-        for result, entity_id in results:
-            relationships = []
-            while hasattr(result, 'has_next') and result.has_next():
-                row = result.get_next()
-                # Now we're storing just relationship_id
-                relationships.append({
-                    'relationship_id': row[0],
-                })
-            processed_results[entity_id] = relationships
-            logger.debug(f"Undirected BFS from entity {entity_id} found {len(relationships)} relationships")
-
-        end_time = time.time()
-        logger.info(f"All BFS searches completed in {end_time - start_time:.2f} seconds")
-        return processed_results
-
-    async def get_relationships_async(entity_ids: List[int], max_depth: int = 2):
-        """
-        Async function for FastAPI to get relationships for a list of entities.
-        """
-        async with MyGraphService(recreate_db=False) as graph_service:
-            return await graph_service.run_multiple_bfs_searches(entity_ids, max_depth)
-
-
-"""
-Graph Database with optimized undirected BFS for external calling using Kuzu's async API.
-"""
-
-# External imports:
-import time
-import asyncio
-import logging
-from typing import List, Dict, Any, Optional
+from typing import List
 
 # Internal imports:
 from graphdb.kuzugraph import KuzuGraphStore
@@ -222,16 +117,15 @@ class MyGraphService(KuzuGraphStore):
         return await graph_service.run_multiple_bfs_searches(entity_ids, max_depth)
 
 
-
 async def test_bfs():
     """Test the BFS functionality of MyGraphService"""
 
     # Test entity IDs
-    test_entity_ids = [549, 555, 551]
-    max_depth = 4
+    test_entity_ids = [549, 555]
+    max_depth = 2
 
     # Create the service (not using async with)
-    graph_service = MyGraphService(recreate_db=False)
+    graph_service = MyGraphService(recreate_db=True)
 
     # Run BFS
     start_time = time.time()

@@ -6,6 +6,7 @@ Main queries to perform RAG on the database.
 import logging
 from dotenv import load_dotenv
 from psycopg2.extras import DictCursor
+from typing import List
 
 # Internal imports:
 from postgres.base import Postgres
@@ -108,3 +109,33 @@ class RetrievalQueries(Postgres):
             logger.info(
                 f"Found {len(results)} results for query: '{query_text[:70]}{'...' if len(query_text) > 70 else ''}'")
             return results
+
+    def find_similar_entities(self, entities: dict, top_k: int) -> list:
+        """Returns the top-k Similar entities"""
+
+        # Holds the entity ids:
+        results = []
+        # Get similar entities query:
+        query = """
+                 SELECT 
+                     entity_id
+                 FROM Entity
+                 ORDER BY entity_emb <=> %s::vector
+                 LIMIT %s;
+                 """
+        with self.conn.cursor() as cur:
+            for entity_name, embedding in entities.items():
+                cur.execute(query, (embedding, top_k))
+                similar_entities = cur.fetchall()
+                results.append(similar_entities)
+
+        # Merge the results:
+        merged_ids = set() # Use a set to store unique IDs
+        for inner_list in results:
+            for id_tuple in inner_list:
+                # Extract the integer ID from the tuple (e.g., (448,) -> 448)
+                merged_ids.add(id_tuple[0])
+        final_unique_ids = list(merged_ids)
+        return final_unique_ids
+
+

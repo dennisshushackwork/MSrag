@@ -6,6 +6,7 @@ asked for: i.e. RAG, Graph-RAG, Local Search, and Drift Search
 import os
 import time
 import logging
+import asyncio
 from typing import List
 from dotenv import load_dotenv
 
@@ -20,7 +21,7 @@ from llm.prompts.rag.reponse import RagPrompt
 from llm.prompts.graphrag.entities import EntityExtractor
 from emb.embedder import Embedder
 from postgres.retrieval import RetrievalQueries
-
+from graphdb.bfs import BFS
 
 def define_top_k(entity_count: int):
     """Defines the number of top-k similar entities extracted from the database, based
@@ -33,6 +34,13 @@ def define_top_k(entity_count: int):
         top_k = 2
     return top_k
 
+async def run_dfs(entity_ids: List[int], max_depth: int):
+    """Runs the dfs search iteratively"""
+    bfs_service = BFS(recreate_db=False)
+    return await bfs_service.run_multiple_bfs_searches(
+        entity_ids=entity_ids,
+        max_depth=max_depth,
+    )
 
 class Retriever:
     """
@@ -86,7 +94,7 @@ class Retriever:
 
     # --------------- Graph-RAG ------------------- #
 
-    def graph_retrieval(self, query: str):
+    async def graph_retrieval(self, query: str):
         """Performs normal graphrag on the database"""
 
         # Step 1: Extract all the entities from the user query:
@@ -94,30 +102,50 @@ class Retriever:
         entities = extractor.extract_entities()
         entity_count = len(entities)
         top_k = define_top_k(entity_count)
+        logger.info(f"Extracted {entity_count} entities: {entities}")
 
-        # Step 2: Embedd the entities:
+
+        # Step 2: Embedd the entities and the query:
+        entities.append(query)
         entities_embedding = self.embedder.embed_texts(entities)
+        query_embedding = entities_embedding[-1]
+        entities_embedding.pop()
 
-        # Step 3: Get the entity_ids from the database:
+        # Step 3: Get the entity_ids from the database (top-k similar per entity):
+        entity_dict = {entity: str(emb) for entity, emb in zip(entities, entities_embedding)}
+        with RetrievalQueries() as db:
+            similar_entities = db.find_similar_entities(entity_dict, top_k=top_k)
+            logger.info(f"Found {len(similar_entities)} similar entities: {similar_entities}")
+
+        # Step 4: Perform Async BFS inside of Kuzu:
+        max_depth = 1
+
+        # Run the multiple BFS searches asynchronously
+        bfs_results = await run_dfs(
+            entity_ids=similar_entities,
+            max_depth=max_depth,
+        )
+
+        logger.info(f"BFS search completed. Results obtained for {len(bfs_results)} starting entities.")
+
+        # Get only the unique values:
+        all_found_relationship_ids = set()
+        for rel_list in bfs_results.values():
+            all_found_relationship_ids.update(rel_list)
+
+        logger.info(f"Found {len(all_found_relationship_ids)} unique relationships")
 
 
+async def main():
+    """Main entry point for running the retriever"""
+    rag = Retriever(model="openai")
 
-
-
-
-
-
-
-
-
-
+    # Uncomment the line you want to run:
+    # response = rag.chunk_retrieval(query="Who is obama's wife?", chunking_method="recursive")
+    response = await rag.graph_retrieval(query="Who is Michelle Obama? What is the wife of Obama?")
+    return response
 
 if __name__ == '__main__':
-    rag = Retriever(model="openai")
-    #response = rag.chunk_retrieval(query="Who is obama's wife?", chunking_method="recursive")
-    rag.graph_retrieval(query="Who is Michelle Obama? What is the wife of Obama?")
-
-    #rag.graph_retrieval('Who is Obamas wife?', 'recursive', limit=60)        text_chunks = [chunk['content'] for chunk in context_chunks]
-
+    asyncio.run(main())
 
 

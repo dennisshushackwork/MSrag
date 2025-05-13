@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
-class MyGraphService(KuzuGraphStore):
+class BFS(KuzuGraphStore):
     """
     This class implements the undirected BFS algorithm with optimizations
     for external calling using Kuzu's async API.
@@ -113,37 +113,15 @@ class MyGraphService(KuzuGraphStore):
         Async function for FastAPI to get relationships for a list of entities.
         """
         # Create service directly (not using async with)
-        graph_service = MyGraphService(recreate_db=False)
+        graph_service = BFS(recreate_db=True)
         return await graph_service.run_multiple_bfs_searches(entity_ids, max_depth)
 
 
-async def test_bfs():
-    """Test the BFS functionality of MyGraphService"""
-
-    # Test entity IDs
-    test_entity_ids = [549, 555]
-    max_depth = 2
-
-    # Create the service (not using async with)
-    graph_service = MyGraphService(recreate_db=True)
-
-    # Run BFS
-    start_time = time.time()
-    results = await graph_service.run_multiple_bfs_searches(test_entity_ids, max_depth)
-    elapsed = time.time() - start_time
-    # Display results
-    print(f"BFS completed in {elapsed:.2f} seconds")
-    # Check total unique relationships
-    all_relationships = set()
-    for rel_list in results.values():
-        all_relationships.update(rel_list)
-    print(all_relationships)
-
 
 if __name__ == "__main__":
+
+
     """Main entry point for testing"""
     print("Starting MyGraphService BFS test...")
 
-    # Run the async test
-    result = asyncio.run(test_bfs())
 

@@ -6,7 +6,6 @@ Main queries to perform RAG on the database.
 import logging
 from dotenv import load_dotenv
 from psycopg2.extras import DictCursor
-from typing import List
 
 # Internal imports:
 from postgres.base import Postgres

@@ -4,6 +4,8 @@ rustworkx
 psycopg2
 docling
 requests
+fastapi
+uvicorn
 torch
 transformers
 accelerate
@@ -11,3 +13,4 @@ sentence-transformers
 graspologic
 nltk
 kuzu
+pydantic

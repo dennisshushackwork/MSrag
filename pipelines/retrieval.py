@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # External imports:
 from llm.llm import LLMClient
 from llm.prompts.rag.reponse import RagPrompt
+from llm.prompts.graphrag.agent import RelationshipAgent
 from llm.prompts.graphrag.entities import EntityExtractor
 from emb.embedder import Embedder
 from postgres.retrieval import RetrievalQueries
@@ -62,6 +63,7 @@ class Retriever:
 
     def chunk_retrieval(self, query: str, chunking_method: str):
         """Simple RAG retrieval (normal RAG)"""
+        start = time.time()
         chunks = []
         return_response = []
 
@@ -77,10 +79,8 @@ class Retriever:
         text_chunks = [chunk[1] for chunk in context_chunks]
 
         # We now perform the RAG query with the provided context:
-        rag_prompt = RagPrompt(query, context=text_chunks)
-        start = time.time()
-        client = LLMClient(rag_prompt.system_prompt,rag_prompt.human_prompt, temperature=0.7, provider=self.model)
-        response = client.send_message()
+        rag_prompt = RagPrompt(query, context=text_chunks, model=self.model)
+        response = rag_prompt.generate_response()
         end = time.time()
         request_time = end - start
         print(f"Request time: {request_time}")
@@ -90,6 +90,7 @@ class Retriever:
     # --------------- Graph-RAG ------------------- #
     async def graph_retrieval(self, query: str):
         """Performs normal graphrag on the database"""
+
         logger.info(f"Starting graph retrieval for query: '{query}'")
         start_time = time.time()
 
@@ -112,17 +113,44 @@ class Retriever:
             similar_entity_ids = db.find_similar_entities(entity_dict_for_search, top_k=top_k)
             logger.info(f"Found {len(similar_entity_ids)} potentially relevant entity IDs in DB: {similar_entity_ids}")
 
-        # Step 4: Perform Async BFS in Kuzu
-        max_bfs_depth = 1
+        sufficient_context = "NO"
+        dfs_depth = 1
+        max_depth = 4
+        context_relationships = []
 
-        # This method now manages its own BFS instance lifecycle including cleanup.
-        dfs = await DFS.get_relationships_async(
-            entity_ids=similar_entity_ids,
-            max_depth=max_bfs_depth
-        )
-        logger.info(f"BFS search completed. Results obtained for {len(dfs)} starting entity IDs.")
+        while sufficient_context == "NO" and dfs_depth <= max_depth:
+            # Perform DFS
+            dfs = await DFS.get_relationships_async(
+                entity_ids=similar_entity_ids,
+                max_depth=dfs_depth
+            )
 
-        # Get only the unique values:
+            # Gets the ranked relationships:
+            relationships = []
+            with RetrievalQueries() as db:
+                relationships = db.extract_rel_given_ids(query_embedding, dfs)
+
+            # Get only the relevant relationships (max size = 7000 tokens):
+            context_relationships, context_length = self.context_size_chunk(relationships, int(os.getenv("CONTEXT")))
+            context_relationships = [rel[0] for rel in context_relationships]
+
+            # Define an agent to test if we have enough context to answer the question:
+            agent = RelationshipAgent(user_query=query, relationships=context_relationships, model=self.model)
+            sufficient_context = agent.check_context()
+            logger.info("The context is sufficient to answer the query.")
+
+            if sufficient_context == "NO":
+                logger.info(f"The context is not sufficient to answer the question: {query}, Trying depth: {dfs_depth}")
+                dfs_depth += 1
+
+        rag_prompt = RagPrompt(query, context=context_relationships, model=self.model)
+        response = rag_prompt.generate_response()
+        print(response)
+
+
+
+
+
 
 
 async def main():

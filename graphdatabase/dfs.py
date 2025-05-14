@@ -68,25 +68,24 @@ class DFS(KuzuDB):
         logger.info(f"Running {len(entity_ids)} parallel undirected BFS searches...")
         tasks = [self.perform_undirected_bfs_async(entity_id, max_depth) for entity_id in entity_ids]
         results = await asyncio.gather(*tasks)
+
         # Process results
-        processed_results = {}
+        relationship_ids = []
         for result, entity_id in results:
-            relationship_ids = []
             while hasattr(result, 'has_next') and result.has_next():
                 row = result.get_next()
                 relationship_ids.append(row[0])
             # Store as a list in the results
-            processed_results[entity_id] = relationship_ids
             logger.debug(f"Undirected BFS from entity {entity_id} found {len(relationship_ids)} unique relationships")
 
         # Get total unique relationships across all entity searches
-        all_relationships = set()
-        for rel_list in processed_results.values():
-            all_relationships.update(rel_list)
+        all_relationships = set(relationship_ids)
+        # Turn it back to a list:
+        all_relationships = list(all_relationships)
         end_time = time.time()
         logger.info(f"All BFS searches completed in {end_time - start_time:.2f} seconds")
         logger.info(f"Found {len(all_relationships)} unique relationships across all entity searches")
-        return processed_results
+        return all_relationships
 
     @staticmethod
     async def get_relationships_async(entity_ids: List[int], max_depth: int = 2):

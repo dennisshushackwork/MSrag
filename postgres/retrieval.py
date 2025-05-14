@@ -6,6 +6,7 @@ Main queries to perform RAG on the database.
 import logging
 from dotenv import load_dotenv
 from psycopg2.extras import DictCursor
+from typing import List
 
 # Internal imports:
 from postgres.base import Postgres
@@ -20,6 +21,7 @@ class RetrievalQueries(Postgres):
     def __init__(self):
         super().__init__()
 
+    # ------------------------------ RAG Approach ------------------------------- #
     def hybrid_search(self, query_text, query_embedding, chunk_type, rrf_k=60, candidate_pool_size=120, final_limit=60):
         """
         Performs a hybrid search combining semantic (vector) and keyword (full-text) search for RAG,
@@ -109,9 +111,10 @@ class RetrievalQueries(Postgres):
                 f"Found {len(results)} results for query: '{query_text[:70]}{'...' if len(query_text) > 70 else ''}'")
             return results
 
+    # ------------------------------ Graph-RAG Approach ------------------------------- #
     def find_similar_entities(self, entities: dict, top_k: int) -> list:
         """Returns the top-k Similar entities"""
-
+        print(top_k)
         # Holds the entity ids:
         results = []
         # Get similar entities query:
@@ -119,7 +122,7 @@ class RetrievalQueries(Postgres):
                  SELECT 
                      entity_id
                  FROM Entity
-                 ORDER BY entity_emb <=> %s::vector
+                 ORDER BY 1-(entity_emb <=> %s::vector) DESC
                  LIMIT %s;
                  """
         with self.conn.cursor() as cur:
@@ -137,4 +140,21 @@ class RetrievalQueries(Postgres):
         final_unique_ids = list(merged_ids)
         return final_unique_ids
 
-
+    def extract_rel_given_ids(self, query_embedding: List[float], rel_ids: List[int]):
+        """Returns the relationships ranked based on vector similarity to the query
+           Returns a list of tuples of form (rel, tokens, similarity)"""
+        query = """
+        SELECT 
+            r.rel_description, 
+            r.rel_tokens,
+            1-(r.rel_emb <=> %s::vector) AS cosine_similarity
+        FROM Relationship r
+        WHERE r.rel_id = ANY(%s)
+        ORDER BY cosine_similarity DESC
+        """
+        results = []
+        with self.conn.cursor() as cur:
+            # Execute query:
+            cur.execute(query, (query_embedding, rel_ids))
+            results = cur.fetchall()
+        return results

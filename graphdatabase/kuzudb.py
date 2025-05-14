@@ -171,7 +171,7 @@ class KuzuDB(Postgres):
     def cleanup(self):
         """
         Clean up Kuzu database resources: close connections and dereference the database object.
-        This helps in properly releasing database locks.
+        This helps in properly releasing database locks.j
         """
         logger.info("Cleaning up Kuzu database resources...")
         try:

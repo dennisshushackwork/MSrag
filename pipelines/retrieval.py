@@ -21,7 +21,7 @@ from llm.prompts.rag.reponse import RagPrompt
 from llm.prompts.graphrag.entities import EntityExtractor
 from emb.embedder import Embedder
 from postgres.retrieval import RetrievalQueries
-from graphdatabase.bfs import BFS
+from graphdatabase.dfs import DFS
 
 def define_top_k(entity_count: int):
     """Defines the number of top-k similar entities extracted from the database, based
@@ -87,7 +87,6 @@ class Retriever:
         return_response.extend([response, request_time, context_length])
         return return_response
 
-
     # --------------- Graph-RAG ------------------- #
     async def graph_retrieval(self, query: str):
         """Performs normal graphrag on the database"""
@@ -117,13 +116,11 @@ class Retriever:
         max_bfs_depth = 1
 
         # This method now manages its own BFS instance lifecycle including cleanup.
-        bfs_results_dict = await BFS.get_relationships_async(
+        dfs = await DFS.get_relationships_async(
             entity_ids=similar_entity_ids,
             max_depth=max_bfs_depth
         )
-
-        logger.info(f"BFS search completed. Results obtained for {len(bfs_results_dict)} starting entity IDs.")
-        logger.info(f"BFS search completed. Results obtained for {len(bfs_results)} starting entities.")
+        logger.info(f"BFS search completed. Results obtained for {len(dfs)} starting entity IDs.")
 
         # Get only the unique values:
 

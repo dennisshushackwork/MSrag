@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 # Internal imports:
 from pipelines.retrieval import Retriever
-from graphdatabase.kuzugraph import KuzuGraphStore
+from graphdatabase.kuzudb import KuzuDB
 from emb.embedder import Embedder
 
 # Load environmental variables:
@@ -52,7 +52,7 @@ class GraphRetrievalAPIResponse(BaseModel):
 
 
 # Initializes the Database and closes the connection:
-kuzu_db = KuzuGraphStore(recreate_db=True)
+kuzu_db = KuzuDB(create=True)
 kuzu_db.close_connection()
 # Initializes the embedder used later:
 embedder = Embedder()

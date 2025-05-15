@@ -16,6 +16,9 @@ from emb.embedder import Embedder
 # Load environmental variables:
 load_dotenv(verbose=True)
 
+# Define the model used:
+model = os.getenv("MODEL")
+
 # Set logging:
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -28,7 +31,6 @@ logger = logging.getLogger(__name__)
 class ChunkRetrievalRequest(BaseModel):
     query: str = Field(...)
     chunking_method: str = Field(...)
-    model: str = Field(...)
 
 
 class ChunkRetrievalResponse(BaseModel):
@@ -40,13 +42,13 @@ class ChunkRetrievalResponse(BaseModel):
 
 class GraphRetrievalRequest(BaseModel):
     query: str = Field(...)
-    bfs_depth: int = Field(default=2)
 
 
 class GraphRetrievalAPIResponse(BaseModel):
     query: str
-    #bfs_depth: int
-    #llm_response: str
+    llm_response: str
+    response_time: float
+    context_length: int
 
 # ------------------------------------------------ #
 
@@ -73,7 +75,7 @@ async def api_perform_chunk_retrieval(request: ChunkRetrievalRequest = Body(...)
     """
     try:
         logger.info(f"Received chunk retrieval request for query: '{request.query}' with method: '{request.chunking_method}'")
-        retriever = Retriever(request.model)
+        retriever = Retriever(model) # Use the model defined in the .env
         response = retriever.chunk_retrieval(query=request.query, chunking_method=request.chunking_method)
         if response is None:
             logger.error("chunk_retrieval did not return a response. This should not happen.")
@@ -91,9 +93,11 @@ async def api_perform_graph_retrieval(request: GraphRetrievalRequest = Body(...)
     """
     Performs Graph-RAG:
     1. Extracts entities from the query.
-    2. Finds similar entities in the knowledge graph (PostgreSQL for entity info, Kuzu for graph structure).
-    3. Performs Breadth-First Search (BFS) from these entities in Kuzu to find related information.
-    4. Returns graph traversal results (further LLM processing of this data is pending).
+    2. Find similar entities in the knowledge graph (PostgreSQL for entity info, Kuzu for graph structure).
+    3. Performs DFS from these entities in Kuzu to find related relationships.
+    4. Ranks these relationships based on their cosine similarity to the user query.
+    5. Use an agent to evaluate if the context is enough for the query.
+    6. Creates the response
     """
     try:
         logger.info(f"Received graph retrieval request for query: '{request.query}', BFS depth: ")

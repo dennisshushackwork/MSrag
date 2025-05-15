@@ -117,6 +117,7 @@ class Retriever:
         dfs_depth = 1
         max_depth = 4
         context_relationships = []
+        context_length = 0
 
         while sufficient_context == "NO" and dfs_depth <= max_depth:
             # Perform DFS
@@ -143,10 +144,20 @@ class Retriever:
                 logger.info(f"The context is not sufficient to answer the question: {query}, Trying depth: {dfs_depth}")
                 dfs_depth += 1
 
+        # Generate the response using the context
         rag_prompt = RagPrompt(query, context=context_relationships, model=self.model)
-        response = rag_prompt.generate_response()
-        print(response)
+        llm_response = rag_prompt.generate_response()
 
+        # Calculate the total response time
+        response_time = time.time() - start_time
+
+        # Return a dictionary that matches the GraphRetrievalAPIResponse model
+        return {
+            "query": query,
+            "llm_response": llm_response,
+            "response_time": response_time,
+            "context_length": int(context_length)
+        }
 
 
 

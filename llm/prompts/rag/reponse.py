@@ -15,7 +15,7 @@ class RagPrompt:
     def system_prompt() -> str:
         """Return a system prompt for RAG"""
         system_prompt = """You are an expert in Retrieval-Augmented Generation (RAG). Your task is to generate an optimal 
-        answer for a user query, given a provided context!"""
+        answer to a user query, given a provided context!"""
         return system_prompt
 
     def human_prompt(self) -> str:
@@ -41,7 +41,6 @@ class RagPrompt:
 
     def generate_response(self):
         """Extract entities from a user query."""
-        print(self.human_prompt())
         self.client = LLMClient(self.system_prompt(), self.human_prompt(), 1, provider=self.model)
         response = self.client.send_message()
         return response

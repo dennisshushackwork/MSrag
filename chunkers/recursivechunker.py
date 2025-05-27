@@ -1,274 +1,367 @@
 """
-Recursive Token Chunker.
-This chunker recursively splits the text based on
- pre-defined separators and creates overlapping chunks.
+Robust Recursive Token Chunker - Fixed Version
+This chunker recursively splits text based on pre-defined separators
+and creates precise token-based overlapping chunks with proper validation.
+Fixed to respect chunk_overlap=0 setting.
 """
 
 # External imports:
 import re
-from typing import List
+from typing import List, Tuple
 
 # Internal imports:
 from chunkers.base import BaseChunker
 
+
 class RecursiveChunker(BaseChunker):
     """
-    Initializes the recursive chunker class, which
-    recursively splits the text based on seperators.
+    Robust recursive chunker that ensures precise token-based overlap
+    and proper chunk size validation.
     """
 
-    # Initialises the variables:
     def __init__(self, document_id: int, chunk_size: int = 400, chunk_overlap: int = 200):
-        super().__init__(
-            document_id,
-            chunk_size,
-            chunk_overlap
-        )
+        super().__init__(document_id, chunk_size, chunk_overlap)
 
-        # Default separators used:
+        # Validate overlap ratio
+        if chunk_overlap >= chunk_size:
+            raise ValueError(f"chunk_overlap ({chunk_overlap}) must be less than chunk_size ({chunk_size})")
+
+        # Calculate maximum effective chunk size after overlap
+        self.max_effective_chunk_size = chunk_size
+        self.min_chunk_tokens = max(5, chunk_overlap // 4) if chunk_overlap > 0 else 5  # Minimum meaningful chunk size
+
+        # Hierarchical separators for better text splitting
         self.separators = [
+            "\n\n\n",  # Section breaks
             "\n\n",  # Paragraphs
             "\n",  # Line breaks
             ". ",  # Sentences
+            "! ",  # Exclamations
+            "? ",  # Questions
+            "; ",  # Semicolons
             ", ",  # Clauses
             " ",  # Words
-            ""  # Characters
+            ""  # Characters (fallback)
         ]
 
-    @staticmethod
-    def split_by_separator(text: str, separator: str) -> List[str]:
-        """Split text using a specified separator pattern"""
-        if not text:
+    def split_by_separator(self, text: str, separator: str) -> List[str]:
+        """Split text using separator while preserving the separator and natural boundaries."""
+        if not text or not text.strip():
             return []
 
-        # Regex-Pattern for splitting:
-        # Example: text = "Hello. How are you?" => separator = ". " => splits = ['Hello', '. ', 'How are you?']
-        pattern = f"({separator})"
-        splits = re.split(pattern, text)
+        # Handle character-level splitting
+        if separator == "":
+            return list(text)
 
-        # Process splits to maintain separators
+        # If separator not in text, return the whole text
+        if separator not in text:
+            return [text]
+
+        # Split and preserve separators
+        parts = text.split(separator)
         results = []
-        for i in range(0, len(splits) - 1, 2): # Iterates only over the words (not separators)
-            piece = splits[i]
-            if i + 1 < len(splits):
-                piece += splits[i + 1]  # Append the separator
-            if piece:
-                results.append(piece)
 
-        # Handle the last piece if it exists
-        if len(splits) % 2 == 1 and splits[-1]:
-            results.append(splits[-1])
+        for i, part in enumerate(parts):
+            if i == len(parts) - 1:
+                # Last part - no separator to add
+                if part:
+                    results.append(part)
+            else:
+                # Add separator back to maintain original text structure
+                if part or separator.strip():  # Keep empty parts if separator has meaning
+                    results.append(part + separator)
 
-        return results if results else [text]
+        # Filter out completely empty results
+        return [r for r in results if r]
 
-    def split_text(self, text: str) -> List[str]:
+    def get_token_boundaries(self, text: str, max_tokens: int) -> Tuple[str, str]:
         """
-        Entrypoint for splitting the text.
+        Split text at token boundary, returning (first_part, remaining_part).
+        Ensures the first part doesn't exceed max_tokens.
         """
-        if not text.strip():
-            return []
+        if not text:
+            return "", ""
 
-        # Get chunks using recursive splitting
-        chunks = self.recursive_split(text, self.separators)
+        tokens = self.tokenize(text)
 
-        # Apply overlap handling to create final chunks
-        overlapping_chunks = self.create_overlapping_chunks(chunks)
+        if len(tokens) <= max_tokens:
+            return text, ""
 
-        # Validate that all chunks are within the size limit and not empty
-        validated_chunks = self.validate_chunks(overlapping_chunks)
+        # Find the split point
+        split_tokens = tokens[:max_tokens]
+        remaining_tokens = tokens[max_tokens:]
 
-        return validated_chunks
+        # Convert back to text
+        first_part = self.detokenize(split_tokens)
+        remaining_part = self.detokenize(remaining_tokens)
+
+        return first_part, remaining_part
+
+    def create_token_overlap(self, prev_chunk: str, current_chunk: str) -> str:
+        """
+        Create overlap by taking exact token count from previous chunk
+        and prepending to current chunk, ensuring size limits.
+        Only applies overlap if chunk_overlap > 0.
+        """
+        # FIXED: Check if overlap is disabled
+        if self.chunk_overlap == 0:
+            return current_chunk
+
+        if not prev_chunk or not current_chunk:
+            return current_chunk
+
+        # Get tokens from previous chunk for overlap
+        prev_tokens = self.tokenize(prev_chunk)
+
+        if len(prev_tokens) <= self.chunk_overlap:
+            # If previous chunk is smaller than overlap, use entire chunk
+            overlap_tokens = prev_tokens
+        else:
+            # Take last N tokens for overlap
+            overlap_tokens = prev_tokens[-self.chunk_overlap:]
+
+        # Convert overlap tokens back to text
+        overlap_text = self.detokenize(overlap_tokens)
+
+        # Combine overlap with current chunk
+        combined_text = overlap_text + current_chunk
+
+        # Ensure combined chunk doesn't exceed size limit
+        combined_tokens = self.tokenize(combined_text)
+
+        if len(combined_tokens) <= self.chunk_size:
+            return combined_text
+        else:
+            # Truncate current chunk to fit within size limit
+            available_tokens = self.chunk_size - len(overlap_tokens)
+            if available_tokens > 0:
+                current_tokens = self.tokenize(current_chunk)
+                truncated_current_tokens = current_tokens[:available_tokens]
+                truncated_current = self.detokenize(truncated_current_tokens)
+                return overlap_text + truncated_current
+            else:
+                # If overlap is too large, just return current chunk truncated
+                current_tokens = self.tokenize(current_chunk)
+                if len(current_tokens) > self.chunk_size:
+                    truncated_tokens = current_tokens[:self.chunk_size]
+                    return self.detokenize(truncated_tokens)
+                return current_chunk
 
     def recursive_split(self, text: str, separators: List[str]) -> List[str]:
-        """Recursively split text using multiple separators until chunks are small enough."""
-        if not text.strip():
+        """Recursively split text using hierarchical separators."""
+        if not text or not text.strip():
             return []
 
-        # Base case: if we're at the last separator or text is small enough
-        if len(separators) == 1 or self.count_tokens(text) <= self.chunk_size:
-            return [text] if text else []
+        current_tokens = self.count_tokens(text)
 
-        # Find first separator that splits the text
+        # Base case: text fits within chunk size
+        if current_tokens <= self.chunk_size:
+            return [text] if text.strip() else []
+
+        # Find appropriate separator
         separator = None
         for sep in separators:
-            if sep in text:
+            if sep in text and sep != "":
                 separator = sep
                 break
 
-        # If no separator found, move to next level
-        if not separator:
+        # If no separator found and we're not at character level, try next level
+        if not separator and len(separators) > 1:
             return self.recursive_split(text, separators[1:])
 
-        # Split using chosen separator
-        splits = self.split_by_separator(text, separator)
+        # If we're at character level or found separator, proceed with splitting
+        if separator == "" or separator:
+            splits = self.split_by_separator(text, separator or "")
+        else:
+            # Fallback: force split at token boundary
+            first_part, remaining = self.get_token_boundaries(text, self.chunk_size)
+            splits = [first_part, remaining] if remaining else [first_part]
 
-        # Process each split
+        # Process splits
         final_chunks = []
-        current_chunk = []
-        current_length = 0
+        current_chunk_parts = []
+        current_chunk_tokens = 0
 
         for split in splits:
-            split_length = self.count_tokens(split)
+            if not split.strip():
+                continue
 
-            # Length validation: If this split alone exceeds chunk size, try splitting further
-            if split_length > self.chunk_size:
-                sub_chunks = self.recursive_split(split, separators[1:])
-                if sub_chunks:  # Only add if non-empty
-                    final_chunks.extend(sub_chunks)
-            # If adding this split would exceed chunk size, start a new chunk
-            elif current_length + split_length > self.chunk_size:
-                if current_chunk:
-                    combined_chunk = self.join_docs(current_chunk)
-                    if combined_chunk.strip():  # Ensure chunk is not empty
-                        final_chunks.append(combined_chunk)
-                current_chunk = [split]
-                current_length = split_length
-            # The current chunk fits with the split
+            split_tokens = self.count_tokens(split)
+
+            # If single split is too large, recursively split it further
+            if split_tokens > self.chunk_size:
+                # Save current accumulated chunk
+                if current_chunk_parts:
+                    chunk_text = "".join(current_chunk_parts)
+                    if chunk_text.strip():
+                        final_chunks.append(chunk_text)
+                    current_chunk_parts = []
+                    current_chunk_tokens = 0
+
+                # Recursively split the large piece
+                if len(separators) > 1:
+                    sub_chunks = self.recursive_split(split, separators[1:])
+                else:
+                    # Force split at token boundary
+                    sub_chunks = []
+                    remaining_text = split
+                    while remaining_text and self.count_tokens(remaining_text) > self.chunk_size:
+                        part, remaining_text = self.get_token_boundaries(remaining_text, self.chunk_size)
+                        if part.strip():
+                            sub_chunks.append(part)
+                    if remaining_text and remaining_text.strip():
+                        sub_chunks.append(remaining_text)
+
+                final_chunks.extend([chunk for chunk in sub_chunks if chunk.strip()])
+
+            # If adding this split would exceed chunk size, finalize current chunk
+            elif current_chunk_tokens + split_tokens > self.chunk_size:
+                if current_chunk_parts:
+                    chunk_text = "".join(current_chunk_parts)
+                    if chunk_text.strip():
+                        final_chunks.append(chunk_text)
+
+                current_chunk_parts = [split]
+                current_chunk_tokens = split_tokens
+
+            # Add split to current chunk
             else:
-                current_chunk.append(split)
-                current_length += split_length
+                current_chunk_parts.append(split)
+                current_chunk_tokens += split_tokens
 
-        # Add any remaining text
-        if current_chunk:
-            combined_chunk = self.join_docs(current_chunk)
-            if combined_chunk.strip():  # Ensure chunk is not empty
-                final_chunks.append(combined_chunk)
+        # Add any remaining chunk
+        if current_chunk_parts:
+            chunk_text = "".join(current_chunk_parts)
+            if chunk_text.strip():
+                final_chunks.append(chunk_text)
 
         return final_chunks
 
     def create_overlapping_chunks(self, chunks: List[str]) -> List[str]:
-        """Create overlapping chunks based on chunk_overlap parameter"""
+        """Create overlapping chunks with precise token-based overlap."""
         if not chunks:
             return []
 
         if len(chunks) == 1:
             return chunks
 
-        result = []
+        # FIXED: Skip overlap creation if overlap is disabled
+        if self.chunk_overlap == 0:
+            return chunks
 
-        for i in range(len(chunks)):
+        overlapped_chunks = []
+
+        for i, chunk in enumerate(chunks):
             if i == 0:
-                # First chunk remains as is
-                result.append(chunks[i])
+                # First chunk - no overlap needed
+                overlapped_chunks.append(chunk)
             else:
-                # Calculate overlap with previous chunk
-                prev_chunk = chunks[i-1]
-                current_chunk = chunks[i]
+                # Create overlap with previous chunk
+                prev_chunk = chunks[i - 1]
+                overlapped_chunk = self.create_token_overlap(prev_chunk, chunk)
+                overlapped_chunks.append(overlapped_chunk)
 
-                # Get tokens from previous chunk to create overlap
-                prev_tokens = self.tokenize(prev_chunk)
-                overlap_token_count = min(self.chunk_overlap, len(prev_tokens))
-
-                if overlap_token_count > 0:
-                    # Get the last N tokens from previous chunk
-                    overlap_tokens = prev_tokens[-overlap_token_count:]
-                    overlap_text = self.detokenize(overlap_tokens)
-
-                    # Only add overlap if it doesn't make the chunk too large
-                    if self.count_tokens(overlap_text + current_chunk) <= self.chunk_size:
-                        current_chunk = overlap_text + current_chunk
-
-                result.append(current_chunk)
-
-        return result
+        return overlapped_chunks
 
     def validate_chunks(self, chunks: List[str]) -> List[str]:
-        """
-        Validates chunks to ensure they are:
-        1. Not empty or containing only meaningless characters
-        2. Not exceeding maximum token size
-        3. Have sufficient content to be useful
-        """
+        """Validate chunks for size, content quality, and token limits."""
         validated = []
-        MIN_CHUNK_LENGTH = 10  # Minimum characters for a meaningful chunk
-        MIN_TOKENS = 5         # Minimum tokens for a meaningful chunk
 
         for chunk in chunks:
             # Skip empty or whitespace-only chunks
-            if not chunk.strip():
+            if not chunk or not chunk.strip():
                 continue
 
-            # Skip chunks that are too short or just punctuation/special characters
-            cleaned_content = re.sub(r'[^\w\s]', '', chunk).strip()
-            if len(cleaned_content) < MIN_CHUNK_LENGTH or len(chunk) < MIN_CHUNK_LENGTH:
-                continue
-
-            # Check token count (skip chunks with too few tokens)
+            chunk = chunk.strip()
             chunk_tokens = self.count_tokens(chunk)
-            if chunk_tokens < MIN_TOKENS:
+
+            # Skip chunks that are too small to be meaningful
+            if chunk_tokens < self.min_chunk_tokens:
                 continue
 
-            # Check if chunk is too large
+            # Handle chunks that are too large (shouldn't happen with proper splitting)
             if chunk_tokens > self.chunk_size:
-                # If too large, try to split it at a lower level
-                for separator in self.separators[2:]:  # Start with sentence-level separators
-                    if separator in chunk:
-                        smaller_chunks = self.split_by_separator(chunk, separator)
-                        smaller_processed = []
+                # Try to truncate at sentence boundary
+                sentences = re.split(r'(?<=[.!?])\s+', chunk)
+                truncated = ""
 
-                        for small_chunk in smaller_chunks:
-                            # Skip small chunks that don't meet minimum requirements
-                            if not small_chunk.strip():
-                                continue
+                for sentence in sentences:
+                    test_chunk = truncated + (" " if truncated else "") + sentence
+                    if self.count_tokens(test_chunk) <= self.chunk_size:
+                        truncated = test_chunk
+                    else:
+                        break
 
-                            cleaned_small = re.sub(r'[^\w\s]', '', small_chunk).strip()
-                            if len(cleaned_small) < MIN_CHUNK_LENGTH or len(small_chunk) < MIN_CHUNK_LENGTH:
-                                continue
-
-                            small_tokens = self.count_tokens(small_chunk)
-                            if small_tokens < MIN_TOKENS:
-                                continue
-
-                            # Accept valid small chunks
-                            if small_tokens <= self.chunk_size:
-                                smaller_processed.append(small_chunk)
-                            else:
-                                # Try character-level splitting as last resort, with size validation
-                                for i in range(0, len(small_chunk), self.chunk_size // 4):
-                                    fragment = small_chunk[i:i + self.chunk_size // 4]
-                                    if fragment.strip() and len(fragment) >= MIN_CHUNK_LENGTH:
-                                        fragment_tokens = self.count_tokens(fragment)
-                                        if fragment_tokens >= MIN_TOKENS:
-                                            smaller_processed.append(fragment)
-
-                        if smaller_processed:
-                            validated.extend(smaller_processed)
-                            break
+                if truncated and self.count_tokens(truncated) >= self.min_chunk_tokens:
+                    validated.append(truncated)
                 else:
-                    # If we couldn't split further, truncate as a last resort
-                    tokens = self.tokenize(chunk)[:self.chunk_size]
-                    truncated = self.detokenize(tokens)
-                    if truncated.strip() and len(truncated) >= MIN_CHUNK_LENGTH:
-                        truncated_tokens = self.count_tokens(truncated)
-                        if truncated_tokens >= MIN_TOKENS:
-                            validated.append(truncated)
+                    # Force truncate at token boundary as last resort
+                    tokens = self.tokenize(chunk)
+                    if len(tokens) > self.chunk_size:
+                        truncated_tokens = tokens[:self.chunk_size]
+                        truncated_text = self.detokenize(truncated_tokens)
+                        if self.count_tokens(truncated_text) >= self.min_chunk_tokens:
+                            validated.append(truncated_text)
             else:
                 validated.append(chunk)
 
         return validated
 
-    def process_document(self, document: str) -> List[tuple]:
-        """Process text into recursive token-based chunks with overlap."""
-        if not document.strip():
+    def split_text(self, text: str) -> List[str]:
+        """Main entry point for splitting text into robust chunks."""
+        if not text or not text.strip():
+            return []
+
+        # Step 1: Recursive splitting
+        chunks = self.recursive_split(text, self.separators)
+
+        # Step 2: Apply token-based overlap (only if chunk_overlap > 0)
+        overlapping_chunks = self.create_overlapping_chunks(chunks)
+
+        # Step 3: Validate all chunks
+        validated_chunks = self.validate_chunks(overlapping_chunks)
+
+        return validated_chunks
+
+    def process_document(self, document: str) -> List[Tuple]:
+        """Process document into robust token-based chunks with precise overlap."""
+        if not document or not document.strip():
             return []
 
         final_chunks = []
         text_chunks = self.split_text(document)
 
         for i, chunk_text in enumerate(text_chunks):
-            # Skip empty chunks
             if not chunk_text.strip():
                 continue
 
-            # Calculate token count
             token_count = self.count_tokens(chunk_text)
 
-            # Skip chunks that are too large (this should not happen with proper validation)
+            # Final validation
             if token_count > self.chunk_size:
-                print(f"Warning: Chunk {i} exceeds size limit with {token_count} tokens.")
+                print(f"Warning: Chunk {i} still exceeds size limit with {token_count} tokens after validation.")
                 continue
 
-            chunk = (self.document_id, chunk_text, token_count, "recursive", True)
+            if token_count < self.min_chunk_tokens:
+                print(f"Warning: Chunk {i} is too small with {token_count} tokens.")
+                continue
+
+            chunk = (self.document_id, chunk_text, token_count, "robust_recursive", True)
             final_chunks.append(chunk)
 
         return final_chunks
+
+
+# Example usage and testing
+if __name__ == '__main__':
+    test_text = """Born in Honolulu, Hawaii, Obama graduated from Columbia University in 1983 with a Bachelor of Arts degree in political science and later worked as a community organizer in Chicago. In 1988, Obama enrolled in Harvard Law School, where he was the first black president of the Harvard Law Review. He became a civil rights attorney and an academic, teaching constitutional law at the University of Chicago Law School from 1992 to 2004. In 1996, Obama was elected to represent the 13th district in the Illinois Senate, a position he held until 2004, when he successfully ran for the U.S. Senate. In the 2008 presidential election, after a close primary campaign against Hillary Clinton, he was nominated by the Democratic Party for president. Obama selected Joe Biden as his running mate and defeated Republican nominee John McCain and his running mate Sarah Palin.
+
+Obama was awarded the 2009 Nobel Peace Prize for efforts in international diplomacy, a decision which drew both criticism and praise. During his first term, his administration responded to the 2008 financial crisis with measures including the American Recovery and Reinvestment Act of 2009, a major stimulus package to guide the economy in recovering from the Great Recession; a partial extension of the Bush tax cuts; legislation to reform health care; and the Dodd–Frank Wall Street Reform and Consumer Protection Act, a major financial regulation reform bill. Obama also appointed Supreme Court justices Sonia Sotomayor and Elena Kagan, the former being the first Hispanic American on the Supreme Court. He oversaw the end of the Iraq War and ordered Operation Neptune Spear, the raid that killed Osama bin Laden, who was responsible for the September 11 attacks. Obama downplayed Bush's counterinsurgency model, expanding air strikes and making extensive use of special forces, while encouraging greater reliance on host-government militaries. He also ordered the 2011 military intervention in Libya to implement United Nations Security Council Resolution 1973, contributing to the overthrow of Muammar Gaddafi and the outbreak of the Libyan crisis."""
+
+    chunker = RobustRecursiveChunker(document_id=1, chunk_size=200, chunk_overlap=0)
+    chunks = chunker.process_document(test_text)
+
+    for i, chunk in enumerate(chunks):
+        print(f"=== Chunk {i + 1} ({chunk[2]} tokens) ===")
+        print(chunk[1])
+        print()

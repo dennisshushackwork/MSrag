@@ -9,7 +9,7 @@ These include:
 
 # External imports:
 import logging
-from typing import List
+from typing import List, Tuple
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 
@@ -182,7 +182,90 @@ class EmbeddingQueries(Postgres):
                     """
             cur.execute(query)
 
+    # ----------------------------- Community specific queries (embedding db) -------------------------- #
 
+    def count_community_groups_to_embed(self) -> int:
+        """
+        Counts the number of community groups whose summaries need to be embedded or
+        whose token counts need to be calculated.
+        A community group needs processing if `community_embed` is TRUE or `community_tokens` is NULL.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(community_id) as count
+                FROM CommunityGroup
+                WHERE community_embed = true OR community_tokens IS NULL
+            """)
+            row = cur.fetchone()
+        return row[0] if row else 0
+
+    def get_community_group_batches(self, batch_size: int, offset: int) -> List[Tuple[int, str, int]]:
+        """
+        Retrieves a batch of community groups that require their summaries embedded or
+        their token counts updated.
+        Includes community_id, community_summary, and current community_tokens (which might be NULL).
+        Uses pagination for efficient processing.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                        SELECT
+                            community_id,
+                            community_summary,
+                            community_tokens
+                        FROM CommunityGroup
+                        WHERE community_embed = true OR community_tokens IS NULL
+                        ORDER BY community_id
+                        LIMIT %s OFFSET %s
+                        """, (batch_size, offset))
+            return cur.fetchall()
+
+    def update_community_group_tokens(self, update_values: List[Tuple[int, int]]) -> None:
+        """
+        Bulk updates the `community_tokens` for community groups.
+        `update_values` is a list of tuples: (token_count, community_id).
+        """
+        if not update_values:
+            return
+
+        with self.conn.cursor() as cur:
+            query = """
+                        UPDATE CommunityGroup AS cg
+                        SET community_tokens = v.community_tokens
+                        FROM (VALUES %s) AS v(community_tokens, community_id)
+                        WHERE cg.community_id = v.community_id
+                    """
+            try:
+                execute_values(cur, query, update_values, template=None, page_size=100)
+                logger.info(f"Bulk updated token counts for {len(update_values)} community groups.")
+                self.conn.commit()
+            except Exception as e:
+                self.conn.rollback()
+                logger.exception(f"Error updating community group token counts: {e}")
+
+    def update_emb_community_group(self, update_values: List[Tuple[int, List[float]]]) -> None:
+        """
+        Bulk updates community groups with their generated embeddings.
+        After successful embedding, `community_embed` is set to FALSE.
+        `update_values` is a list of tuples: (community_id, community_embedding).
+        """
+        if not update_values:
+            return
+
+        with self.conn.cursor() as cur:
+            query = """
+                        UPDATE CommunityGroup AS cg
+                        SET community_emb = v.community_emb,
+                            community_embed = false
+                        FROM (VALUES %s) AS v(community_id, community_emb)
+                        WHERE cg.community_id = v.community_id
+                    """
+            try:
+                execute_values(cur, query, update_values, template=None, page_size=100)
+                logger.info(f"Bulk updated embeddings for {len(update_values)} community groups.")
+                self.conn.commit()  # Commit the transaction to save changes
+            except Exception as e:
+                self.conn.rollback()  # Rollback on error
+                logger.exception(f"Bulk update community group embeddings error: {e}")
 
 
 

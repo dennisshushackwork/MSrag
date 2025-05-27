@@ -7,7 +7,6 @@ import os
 import time
 import logging
 import asyncio
-from typing import List
 from dotenv import load_dotenv
 
 # Define the logging handler:
@@ -16,7 +15,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # External imports:
-from llm.llm import LLMClient
 from llm.prompts.rag.reponse import RagPrompt
 from llm.prompts.graphrag.agent import RelationshipAgent
 from llm.prompts.graphrag.entities import EntityExtractor

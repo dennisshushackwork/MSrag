@@ -1,12 +1,12 @@
 python-dotenv
 networkx
-rustworkx
 psycopg2
 docling
 requests
 fastapi
 uvicorn
 torch
+future
 transformers
 accelerate
 sentence-transformers
@@ -14,3 +14,5 @@ graspologic
 nltk
 kuzu
 pydantic
+faiss-cpu
+pip-licenses

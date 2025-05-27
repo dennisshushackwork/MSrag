@@ -81,8 +81,7 @@ class GraphConstruction:
         return name_id_pairs
 
     @staticmethod
-    def upsert_relationships(entities: List[tuple], relationships: List[Dict[str, Any]], chunk_id: int):
-        """Upserts the relationships into the database. Entities = List(name, id)"""
+    def upsert_relationships(entities: List[tuple], relationships: List[Dict[str, Any]], chunk_id: int, document_id: int):
         # Values to insert into the database:
         values = []
 
@@ -106,6 +105,7 @@ class GraphConstruction:
                     rel["description"],
                     rel["summary"],
                     chunk_id,
+                    document_id,
                     True
                 ))
 
@@ -143,7 +143,7 @@ class GraphConstruction:
             entities = self.upsert_entities(chunk_entities, document_id=chunk[1], chunk_id=chunk_id)
 
             # Upsert the relationships
-            self.upsert_relationships(entities, chunk_relationships, chunk_id=chunk_id)
+            self.upsert_relationships(entities, chunk_relationships, chunk_id=chunk_id, document_id=chunk[1])
             return True
         except Exception as e:
             logger.exception(f"Error processing chunk {chunk_id}: {e}")
@@ -211,7 +211,6 @@ class GraphConstruction:
                     future.result()
                 except Exception as e:
                     logger.exception(f"Error in processing thread: {e}")
-
 
 
     def retry_failed_chunks(self, document_id: int, model: str) -> None:

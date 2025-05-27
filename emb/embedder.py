@@ -1,151 +1,156 @@
+"""
+Embedding model: Alibaba-NLP/gte-multilingual-base
+Uses MRL to truncate embeddings to 256. https://huggingface.co/Alibaba-NLP/gte-multilingual-base
+Apache-2.0 License: https://apache.org/licenses/LICENSE-2.0
+"""
 # External imports:
 import torch
 import logging
 from typing import List
 import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoConfig
 
 # Initialising the Logger:
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
 class Embedder:
     """
     Embedding Service using the Singleton Design Pattern.
-    Uses the Alibaba-NLP/gte-base-en-v.1.5 embedding model found on Huggingface.
-    https://huggingface.co/Alibaba-NLP/gte-base-en-v1.5
+    https://huggingface.co/Alibaba-NLP/gte-multilingual-base
     """
     _instance = None # Holds the instance of the embedder
     _is_initialized = False # Flag for embedding initalisation
+    TRUNCATION_DIM = 256
 
-    def __new__(cls, model_id: str = "Alibaba-NLP/gte-base-en-v1.5"):
+    def __new__(cls, model_id: str = "Alibaba-NLP/gte-multilingual-base"):
         """Creates a new embedder instance."""
         if cls._instance is None:
             logger.info("Creating new embedder instance.")
             cls._instance = super(Embedder, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, model_id: str = "Alibaba-NLP/gte-base-en-v1.5"):
-        """Initialisation of the Embedding Class"""
-        if not Embedder._is_initialized:
-            logger.info("Initialising embedder instance with model ID '{}'".format(model_id))
-            self.model_id = model_id
-            self.max_tokens = 8192 # This is the maximum number of tokens the embedder can handle at once.
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, model_id: str = "Alibaba-NLP/gte-multilingual-base"):
+        """Initializes a new embedder instance."""
+        if Embedder._is_initialized:
+            return
+        logger.info(f"Initializing new embedder instance with id {model_id}.")
+        self.model_id = model_id
+        self.max_tokens = 8192  # This is the maximum number of tokens the embedder can handle at once.
 
-            # Load the model and the tokenizer:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        # 1) Pick the correct device:
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+            logger.info("Using CUDA on GPU!")
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+            logger.info("Using MPS (Apple Silicon)")
+        else:
+            self.device = torch.device("cpu")
+            logger.info("Using CPU")
 
-            # Load the model CPU or GPU and set the model to eval mode:
-            self.model = AutoModel.from_pretrained(model_id, trust_remote_code=True).to(self.device)
-            self.model.eval()
-            Embedder._is_initialized = True
-            logger.info("Embedder initialization complete.")
+        # 2) Load and add the correct config:
+        self.config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+        if self.device.type == "cuda":
+            # Enable xFormers memory-efficient kernels on CUDA (may require pip install xformers)
+            self.config.use_memory_efficient_attention = True
+            # Also force the right attention implementation
+            self.config.attn_implementation = "memory_efficient"
+        else:
+            # MPS/CPU: fallback to eager
+            self.config.use_memory_efficient_attention = False
+            self.config.attn_implementation = "eager"
 
+        # 3) Tokenizer & model
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        self.model = AutoModel.from_pretrained(
+            model_id,
+            config=self.config,
+            add_pooling_layer=False,
+            trust_remote_code=True
+        ).to(self.device)
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        """Embeds a list of texts using the embedder and returns the embedding vectors."""
-        if not texts:
-            logger.warning("No texts to embed.")
-            return []
-
-        try:
-            # Tokenize the input texts
-            batch_dict = self.tokenizer(texts,
-                                        max_length=self.max_tokens,
-                                        padding=True,
-                                        truncation=True,
-                                        return_tensors='pt')
-
-            # Ensure no gradients are computed during inference
-            with torch.no_grad():
-                outputs = self.model(**batch_dict)
-            embeddings = outputs.last_hidden_state[:, 0]
-            embeddings_normalized = F.normalize(embeddings, p=2, dim=1)
-            return embeddings_normalized.detach().numpy().tolist()
-        except Exception as e:
-            logger.error("An error occurred during the embedding: {}".format(e))
-            raise
-
-    def cosine_similarity(self, emb1:List[float], emb2:List[float]) -> float:
-        """Calculates the cosine similarity between two embeddings."""
-        emb_1 = torch.tensor(emb1, device=self.device)
-        emb_2 = torch.tensor(emb2, device=self.device)
-
-        # Compute cosine similarity
-        similarity = torch.dot(emb_1, emb_2)
-        return similarity.item()  # Convert tensor to scalar value
+        Embedder._is_initialized = True
+        logger.info("Embedder initialization complete.")
 
     def tokenize_to_ids(self, text: str) -> List[int]:
-        """Converts the text into a list of IDs"""
-        # The tokenizer will warn and truncate to its own model_max_length if self.max_tokens is larger.
-        encoding = self.tokenizer(
+        """Returns a list of integers representing the token ids of a given `text`."""
+        tokens = self.tokenizer(
             text,
-            padding=False,
+            padding=True,
             truncation=True,
-            max_length=self.max_tokens,
-            add_special_tokens=False  # Adds [CLS] and [SEP] tokens
+            return_tensors="pt",
+            max_length=self.max_tokens
         )
-        return encoding['input_ids']
+        return tokens["input_ids"].squeeze(0).tolist()
 
-    def decode_tokens(self, token_ids: List[int]) -> str:
-        """Converts the token_ids into a list of strings"""
-        return self.tokenizer.decode(token_ids, add_special_tokens=False)
+    def decode_tokens(self, token_ids: List[int]) -> List[str]:
+        """Decodes the tokens back"""
+        return self.tokenizer.decode(token_ids, skip_special_tokens=True)
 
     def count_tokens(self, text: str) -> int:
-        """Counts the number of tokens in a text"""
+        """Counts the number of tokens in a text document"""
         return len(self.tokenize_to_ids(text))
 
+    def _get_raw_embeddings(self, texts: list[str], are_queries: bool = False) -> torch.Tensor:
+        """
+        Embedds the input texts into 768-dimensional embeddings in full float32 precision.
+        """
+        # If we have a query vector, we add the prefix: query
+        if are_queries:
+            query_prefix = 'query: '
+            texts = ["{}{}".format(query_prefix, i) for i in texts]
 
-if __name__ == '__main__':
-    document = """Hello my name is Dennis. I am a cool guy, looking for an improvement of my life.
-                  Please make sure to include the best things into my name. What is the derivative of 5?
-                  Born in Honolulu, Hawaii, Obama graduated from Columbia University in 1983 with a Bachelor of 
-                  Arts degree in political science and later worked as a community organizer in Chicago. In 1988, 
-                  Obama enrolled in Harvard Law School, where he was the first black president of the Harvard Law Review.
-                  He became a civil rights attorney and an academic, teaching constitutional law at the University 
-                  of Chicago Law School from 1992 to 2004. In 1996, Obama was elected to represent the 13th district 
-                  in the Illinois Senate, a position he held until 2004, when he successfully ran for the U.S. Senate. 
-                  In the 2008 presidential election, after a close primary campaign against Hillary Clinton, he was 
-                  nominated by the Democratic Party for president. Obama selected Joe Biden as his running mate and 
-                  defeated Republican nominee John McCain and his running mate Sarah Palin."""
-    query2 = "Dennis Shushack"
-    query3 = "Colin Shushack"
-    query4 = "Dennis Shushack"
-    embedding = Embedder()
-    emb1, emb2 = embedding.embed_texts([document, query2])
-    print(embedding.cosine_similarity(emb1, emb2))
-    tokens = embedding.tokenize_to_ids(document)
-    print(tokens)
-    print(embedding.decode_tokens(tokens))
-    print(embedding.count_tokens(query3))
+        # 1) Tokenizer:
+        tokens = self.tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            max_length=self.max_tokens
+        ).to(self.device)
 
+        # 2) Compute token embeddings
+        with torch.no_grad():
+            text_embeddings_768d = self.model(**tokens)[0][:, 0]
 
+        return text_embeddings_768d  # Shape: (batch_size, 768)
 
+    def cosine_similarity(self, query: torch.Tensor , document: torch.Tensor) -> float:
+        """Calculates the cosine similarity between `query` and `document`."""
+        query = torch.tensor(emb1, device=self.device)
+        document = torch.tensor(emb2, device=self.device)
+        return F.cosine_similarity(query, document, dim=0).item()
 
+    @staticmethod
+    def _normalize_embeddings_torch(embeddings_matrix: torch.Tensor) -> torch.Tensor:
+        """Normalize embeddings to unit norm along axis 1."""
+        return F.normalize(embeddings_matrix, p=2, dim=1)
 
+    def embed_texts(self, texts: list[str], are_queries: bool = False) -> torch.Tensor:
+        """Generates 768D embeddings, truncates them to 256D """
 
+        # 1. Get 768D normalized float embeddings (as torch.Tensor on self.device)
+        embeddings_768d_torch = self._get_raw_embeddings(texts=texts, are_queries=are_queries)
 
+        # 2. Truncate to TRUNCATION_DIM (e.g., 256):
+        truncated_embeddings_torch = embeddings_768d_torch[:, :self.TRUNCATION_DIM]
 
+        # 3. Re-normalize the 256D embeddings:
+        normalized_truncated_embeddings_torch = self._normalize_embeddings_torch(truncated_embeddings_torch)
+        return normalized_truncated_embeddings_torch.cpu().detach().numpy().tolist()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# For testing purposes:
+if __name__ == "__main__":
+    embedder = Embedder(model_id="Alibaba-NLP/gte-multilingual-base")
+    text1 = "Colin Shushack is born in Hedingen"
+    text2 = "Dennis Shushack"
+    embeddings = embedder.embed_texts(texts=[text1, text2], are_queries=False)
+    emb1 = embeddings[0]
+    emb2 = embeddings[1]
+    cosine = embedder.cosine_similarity(emb1, emb2)
+    print(cosine)
 
 

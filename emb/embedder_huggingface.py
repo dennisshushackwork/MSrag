@@ -3,20 +3,20 @@ Embedding model: Alibaba-NLP/gte-multilingual-base (loaded from local directory)
 Uses MRL to truncate embeddings to 256. https://huggingface.co/Alibaba-NLP/gte-multilingual-base
 Apache-2.0 License: https://apache.org/licenses/LICENSE-2.0.
 Model loaded from local directory to avoid HuggingFace rate limits.
+Please ensure to have downloaded the model via HuggingFace.
 """
 # External imports:
+import os
 import torch
 import logging
+from dotenv import load_dotenv
 from typing import List
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel, AutoConfig
-import os
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
 
 # Initialising the Logger:
+load_dotenv()
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -43,25 +43,15 @@ class Embedder:
         Initializes a new embedder instance.
 
         Args:
-            model_path: Path to local model directory. If None, uses environment variable.
+            model_path: Path to local model directory. If None, uses default path.
         """
         if Embedder._is_initialized:
             return
 
-        # Use provided path, environment variable, or fallback to default
+        # Set default model path if not provided
         if model_path is None:
-            model_path = os.getenv("EMBEDDING")
-
-        # If still None, use fallback default
-        if model_path is None:
-            model_path = "../models/gte-multilingual-base/"
-
-        # Convert relative path to absolute path
-        if model_path and not os.path.isabs(model_path):
-            # Get the directory where this script is located
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            # Resolve the relative path from the script directory
-            model_path = os.path.abspath(os.path.join(script_dir, model_path))
+            # Assuming your model is in the project root/models directory
+            model_path = "/Users/dennis/Documents/GitHub/MSrag/models/gte-multilingual-base"
 
         # Verify the model path exists
         if not os.path.exists(model_path):
@@ -131,8 +121,7 @@ class Embedder:
             padding=True,
             truncation=True,
             return_tensors="pt",
-            max_length=self.max_tokens,
-            skip_special_tokens=True
+            max_length=self.max_tokens
         )
         return tokens["input_ids"].squeeze(0).tolist()
 
@@ -195,9 +184,9 @@ class Embedder:
 
 # For testing purposes:
 if __name__ == "__main__":
-    # Test with your local model using environment variable
+    # Test with your local model
     try:
-        embedder = Embedder()  # Now uses environment variable
+        embedder = Embedder(model_path="/Users/dennis/Documents/GitHub/MSrag/models/gte-multilingual-base")
 
         text1 = "Colin Shushack is born in Hedingen"
         text2 = "Dennis Shushack"
@@ -214,4 +203,4 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Error loading local model: {e}")
-        print("Make sure your EMBEDDING environment variable is set correctly in your .env file.")
+        print("Make sure the model path is correct and all required files are present.")

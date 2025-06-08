@@ -10,7 +10,6 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm CASCADE;
 CREATE TABLE IF NOT EXISTS Document (
     document_id   SERIAL PRIMARY KEY,
     content       TEXT NOT NULL,
-    content_tsv   tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
     created_at    TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
@@ -161,7 +160,6 @@ CREATE INDEX IF NOT EXISTS idx_relationship_chunk_id    ON Relationship(rel_chun
 CREATE INDEX IF NOT EXISTS idx_relationship_document_id ON Relationship(rel_document_id);
 
 -- Full-text search indexes
-CREATE INDEX IF NOT EXISTS idx_document_content_tsv    ON Document       USING gin(content_tsv);
 CREATE INDEX IF NOT EXISTS idx_chunk_text_tsv          ON Chunk          USING gin(chunk_text_tsv);
 CREATE INDEX IF NOT EXISTS idx_entity_name_tsv         ON Entity         USING gin(entity_name_tsv);
 CREATE INDEX IF NOT EXISTS idx_rel_description_tsv     ON Relationship   USING gin(rel_description_tsv);

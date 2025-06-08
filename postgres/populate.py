@@ -8,7 +8,6 @@ These include:
 """
 # External imports:
 import logging
-import hashlib
 from typing import Optional, Dict
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
@@ -41,46 +40,6 @@ class PopulateQueries(Postgres):
         self.conn.commit()
         return document_id
 
-    def set_document_with_metadata(self, content: str, metadata: Dict = None) -> int:
-        """
-        Insert document with additional metadata.
-        Args:
-            content: Document content
-            metadata: Additional metadata (can be stored as JSONB if you extend schema
-        Returns:
-            Document ID
-        """
-        content_hash = hashlib.md5(content.encode()).hexdigest()
-
-        # Check if document already exists
-        existing_id = self.get_document_by_content_hash(content_hash)
-        if existing_id:
-            return existing_id
-
-        query = """
-                INSERT INTO Document (content) 
-                VALUES (%s) 
-                RETURNING document_id
-                """
-        with self.conn.cursor() as cur:
-            cur.execute(query, (content,))
-            result = cur.fetchone()
-            return result[0]
-
-
-    def get_document_by_content_hash(self, content_hash: str) -> Optional[int]:
-        """Get document ID by content hash to avoid duplicates."""
-        query = """
-               SELECT document_id 
-               FROM Document 
-               WHERE md5(content) = %s
-               """
-        with self.conn.cursor() as cur:
-            cur.execute(query, (content_hash,))
-            result = cur.fetchone()
-            return result[0] if result else None
-
-
 # -------------------------- Chunk Specific Queries (populate db) -------------------------------- #
     def set_chunks(self, values) -> None:
         """Adds chunks into the database and returns them (without the embedding)."""
@@ -91,21 +50,16 @@ class PopulateQueries(Postgres):
               """
             execute_values(cur, query, values, template=None, page_size=100)
 
-    def set_chunks_with_positions(self, chunks: List[Tuple[str, int, int, int, str]]) -> None:
+    def set_chunks_with_positions(self, chunks) -> None:
         """
         Insert chunks with start/end positions (needed for evaluation chromadb). Needs adjustment. (use chunk_embed)
         """
         query = """
-               INSERT INTO Chunk (chunk_text, chunk_document_id, chunk_tokens, chunk_type, start_index, end_index) 
+               INSERT INTO Chunk (chunk_document_id, chunk_text, chunk_tokens, chunk_type, chunk_embed, start_index, end_index) 
                VALUES (%s, %s, %s, %s, %s, %s)
                """
-        chunk_data = []
-        for chunk_text, doc_id, start_idx, end_idx, chunk_type in chunks:
-            # Calculate token count (you might want to use your embedder's count_tokens method)
-            token_count = len(chunk_text.split())  # Simple approximation
-            chunk_data.append((chunk_text, doc_id, token_count, chunk_type, start_idx, end_idx))
         with self.conn.cursor() as cur:
-            cur.executemany(query, chunk_data)
+            cur.executemany(query, chunks)
 
     def load_chunks_in_batches(self, document_id: int, batch_size: Optional[int] = 10, offset: int = 0) -> List[tuple]:
         """ Loads chunks in batches for KG-Construction using pagination with LIMIT and OFFSET"""

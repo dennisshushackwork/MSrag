@@ -51,10 +51,7 @@ class Embedder:
         # Use provided path, environment variable, or fallback to default
         if model_path is None:
             model_path = os.getenv("EMBEDDING")
-
-        # If still None, use fallback default
-        if model_path is None:
-            model_path = "../models/gte-multilingual-base/"
+            print(model_path)
 
         # Convert relative path to absolute path
         if model_path and not os.path.isabs(model_path):
@@ -62,6 +59,7 @@ class Embedder:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             # Resolve the relative path from the script directory
             model_path = os.path.abspath(os.path.join(script_dir, model_path))
+            print(model_path)
 
         # Verify the model path exists
         if not os.path.exists(model_path):
@@ -88,37 +86,27 @@ class Embedder:
             self.device = torch.device("cpu")
             logger.info("Using CPU")
 
-        # 2) Load config from local directory:
+        # 2) Load config from local directory - FIXED VERSION:
         logger.info("Loading model configuration from local directory...")
         self.config = AutoConfig.from_pretrained(
             model_path,
-            trust_remote_code=True,
-            local_files_only=True  # This ensures it doesn't try to download
+            local_files_only=True,
+            trust_remote_code=True
         )
-
-        if self.device.type == "cuda":
-            # Enable xFormers memory-efficient kernels on CUDA
-            self.config.use_memory_efficient_attention = True
-            self.config.attn_implementation = "memory_efficient"
-        else:
-            # MPS/CPU: fallback to eager
-            self.config.use_memory_efficient_attention = False
-            self.config.attn_implementation = "eager"
 
         # 3) Load tokenizer and model from local directory:
         logger.info("Loading tokenizer from local directory...")
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_path,
-            local_files_only=True  # Prevents downloading
+            local_files_only=True,
+            trust_remote_code=True
         )
 
         logger.info("Loading model from local directory...")
         self.model = AutoModel.from_pretrained(
             model_path,
-            config=self.config,
-            add_pooling_layer=False,
             trust_remote_code=True,
-            local_files_only=True  # Prevents downloading
+            add_pooling_layer=False,
         ).to(self.device)
 
         Embedder._is_initialized = True
@@ -193,17 +181,76 @@ class Embedder:
         return normalized_truncated_embeddings_torch.cpu().detach().numpy().tolist()
 
 
-# For testing purposes:
+    def verify_gpu_usage(self):
+        """Verify that the model and tensors are actually on GPU"""
+        print(f"\n=== GPU Verification ===")
+        print(f"CUDA Available: {torch.cuda.is_available()}")
+        print(f"Current Device: {self.device}")
+
+        if torch.cuda.is_available():
+            print(f"GPU Name: {torch.cuda.get_device_name(0)}")
+            print(f"GPU Memory Allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+            print(f"GPU Memory Cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
+
+            # Check if model parameters are on GPU
+            model_device = next(self.model.parameters()).device
+            print(f"Model Parameters Device: {model_device}")
+
+            # Test a small embedding to see GPU utilization
+            print("Testing GPU utilization with small embedding...")
+
+            # Clear GPU cache and get initial memory
+            torch.cuda.empty_cache()
+            initial_memory = torch.cuda.memory_allocated(0)
+
+            # Run a test embedding
+            test_text = ["This is a test sentence to verify GPU usage"]
+            with torch.no_grad():
+                tokens = self.tokenizer(
+                    test_text,
+                    padding=True,
+                    truncation=True,
+                    return_tensors="pt",
+                    max_length=self.max_tokens
+                ).to(self.device)
+
+                # Check if tokens are on GPU
+                print(f"Input Tokens Device: {tokens['input_ids'].device}")
+
+                # Run model inference
+                embeddings = self.model(**tokens)[0][:, 0]
+                print(f"Output Embeddings Device: {embeddings.device}")
+
+            # Check memory after inference
+            final_memory = torch.cuda.memory_allocated(0)
+            memory_used = (final_memory - initial_memory) / 1024**2
+            print(f"Memory used for inference: {memory_used:.2f} MB")
+
+        else:
+            print("CUDA not available - running on CPU")
+        print(f"========================\n")
+
+# Add this to your main section:
 if __name__ == "__main__":
-    # Test with your local model using environment variable
     try:
-        embedder = Embedder()  # Now uses environment variable
+        embedder = Embedder()
+
+        # Verify GPU usage
+        embedder.verify_gpu_usage()
 
         text1 = "Colin Shushack is born in Hedingen"
         text2 = "Dennis Shushack"
 
         print("Generating embeddings...")
+
+        # Time the embedding generation
+        import time
+        start_time = time.time()
+
         embeddings = embedder.embed_texts(texts=[text1, text2], are_queries=False)
+
+        end_time = time.time()
+        print(f"Embedding generation took: {end_time - start_time:.3f} seconds")
 
         emb1 = embeddings[0]
         emb2 = embeddings[1]

@@ -1,16 +1,13 @@
 """
 This is a Service Class for Chunking.
 It chunks the data and saves it in the Postgres Database.
-
-
-
 """
 # External Imports:
 import logging
 from typing import Literal, List
 
 # Internal Imports:
-from chunkers.token_chunker_gemma import FixedTokenChunker
+from chunkers.token_chunker import FixedTokenChunker
 from chunkers.recursive_chunker import RecursiveTokenChunker
 from chunkers.cluster_semantic_chunker import ImprovedClusterSemanticChunker
 from emb.chunks import ChunkEmbedder

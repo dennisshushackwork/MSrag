@@ -14,5 +14,6 @@ graspologic
 nltk
 kuzu
 pydantic
-faiss-cpu
 pip-licenses
+
+

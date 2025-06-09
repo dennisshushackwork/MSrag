@@ -1,4 +1,4 @@
-"""
+""" my cluster
 Advanced Cluster Semantic Chunker using NLTK for sentence splitting and Gemma tokenizer for token counting.
 Optimized with Numba for fast dynamic programming.
 
@@ -174,10 +174,9 @@ class ImprovedClusterSemanticChunker(BaseChunker):
 
         # Download NLTK data if needed
         try:
-            nltk.data.find('tokenizers/punkt')
+            nltk.data.find('tokenizers/punkt_try')
         except LookupError:
-            logger.info("Downloading NLTK punkt tokenizer...")
-            nltk.download('punkt', quiet=True)
+                nltk.download('punkt_tab')
 
         self._doc_id = doc_id
         self._chunk_size = max_chunk_size
@@ -478,7 +477,6 @@ if __name__ == "__main__":
 
     # Test with sample text that has clear semantic groupings
     test_text = """
-        as of december 31, 2017, the company had gross state income tax credit carry-forwards of approximately $20 million, which expire from 2018 through 2020. a deferred tax asset of approximately $16 million (net of federal benefit) has been established related to these state income tax credit carry-forwards, with a valuation allowance of $7 million against such deferred tax asset as of december 31, 2017. the company had a gross state net operating loss carry-forward of $39 million, which expires in 2027. a deferred tax asset of approximately $3 million (net of federal benefit) has been established for the net operating loss carry-forward, with a full valuation allowance as of december 31, 2017. other state and foreign net operating loss carry-forwards are separately and cumulatively immaterial to the company 2019s deferred tax balances and expire between 2026 and 2036. 14. debt long-term debt consisted of the following:.
 
 
         """

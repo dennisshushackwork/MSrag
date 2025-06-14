@@ -1,0 +1,1 @@
+[["millions", "operatingleases", "capitalleases"], ["2019", "$ 419", "$ 148"], ["2020", "378", "155"], ["2021", "303", "159"], ["2022", "272", "142"], ["2023", "234", "94"], ["later years", "1040", "200"], ["total minimum lease payments", "$ 2646", "$ 898"], ["amount representing interest", "n/a", "-144 ( 144 )"], ["present value of minimum lease payments", "n/a", "$ 754"]]

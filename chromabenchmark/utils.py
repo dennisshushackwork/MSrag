@@ -4,30 +4,32 @@ ts primary purpose is to reliably locate specific "target" strings (like a refer
 (like a source text), accounting for common real-world text variations.
 
 This file is meant to accurately map the extracted text "chunks" or "references"
- back to their precise locations within the original, full document.
+back to their precise locations within the original, full document.
 """
 
 import re
 import difflib
+import logging
 from enum import Enum
 from typing import Optional, Tuple
+
+# Configure logging:
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 def normalize_text(text: str) -> str:
     """Normalize text for better matching by handling common tokenization artifacts."""
     # Remove extra whitespace and normalize
     text = re.sub(r'\s+', ' ', text).strip()
-
     # Handle common tokenization artifacts
     text = text.replace('<unk>', '')  # Remove unknown tokens
     text = text.replace('@-@', '-')  # Convert back to hyphens
-    text = text.replace(' @,@ ', ', ')
-    text = text.replace(' @.@ ', '. ')
-
+    text = text.replace(' @,@ ', ', ') # Convert to commas
+    text = text.replace(' @.@ ', '. ') # Convert to points.
     # Normalize quotes
     text = text.replace('"', '"').replace('"', '"')
     text = text.replace(''', "'").replace(''', "'")
-
     return text
 
 
@@ -96,15 +98,14 @@ def rigorous_document_search(document: str, target: str) -> Optional[Tuple[str, 
     if not target or not document:
         return None
 
-    original_target = target
-    if target.endswith('.'):
-        target = target[:-1]
-
     # Strategy 1: Direct exact match
+    logger.info("Trying direct match")
     if target in document:
         start_index = document.find(target)
         end_index = start_index + len(target)
         return target, start_index, end_index
+    logger.info("Direct match did not work")
+
 
     # Strategy 2: Normalize both texts and try exact match
     normalized_doc = normalize_text(document)
@@ -218,3 +219,14 @@ class Language(str, Enum):
     C = "c"
     LUA = "lua"
     PERL = "perl"
+
+
+# (1, 'Good evening. Good evening. If I were smart, I’d go home now.\n\nMr. Speaker, Madam Vice President, members of Congress, my fellow Americans. In January 1941, Franklin Roosevelt came to this chamber to speak to the nation. And he said, “I address you at a moment unprecedented in the history of the Union”. Hitler was on the march . War was raging in Europe. President Roosevelt’s purpose was to wake up Congress and alert the American people that this was no ordinary time. Freedom and democracy were under assault in the world. Tonight, I come to the same chamber to address the nation. Now it’s we who face an unprecedented moment in the history of the Union. And, yes, my purpose tonight is to wake up the Congress and alert the American people that this is no ordinary moment either. Not since President Lincoln and the Civil War have freedom and democracy been under assault at home as they are today. What makes our moment rare is that freedom and democracy are under attack at — both at home and overseas at the very same time.\n\nOverseas, Putin of Russia is on the march, invading Ukraine and sowing chaos throughout Europe and beyond.', 244, 'cluster', True, 0, 1145)
+
+# Testing this:
+corpus_path = "/home/dennis/Documents/MSrag/chromabenchmark/dataset/corpora/state_of_the_union.md"
+
+with open(corpus_path, 'r') as file:
+    corpus = file.read()
+
+print(corpus[0:1145])

@@ -4,7 +4,7 @@ from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Internal Imports:
-from emb.embedder import Embedder
+from emb.embedder import Qwen3Embedder
 from postgres.embedding import EmbeddingQueries
 
 # Initialisation of logger:
@@ -22,7 +22,7 @@ class ChunkEmbedder:
         self.batch_size = 100             # Batch size for chunks.
         self.max_workers = 4
 
-    def batch_embed_texts(self, embedder: Embedder, texts_and_token_count: List[tuple]) -> List:
+    def batch_embed_texts(self, embedder: Qwen3Embedder, texts_and_token_count: List[tuple]) -> List:
         """
         Batches texts so that each embedding call doesn't exceed max_tokens_per_batch.
         `texts_and_token_count` is a list of tuples: (text, token_count).
@@ -34,6 +34,7 @@ class ChunkEmbedder:
         for text, token_count in texts_and_token_count:
             if current_batch and (current_token_count + token_count > self.max_tokens_per_batch):
                 logger.info("Embedding a batch with %d texts (%d tokens)", len(current_batch), current_token_count)
+                print(current_batch)
                 batch_result = embedder.embed_texts(current_batch)
                 batched_results.extend(batch_result)
                 current_batch = []
@@ -68,8 +69,8 @@ class ChunkEmbedder:
           - Updates the database.
         Returns the number of processed chunks.
         """
-        # Each thread instantiates its own embedder.
-        embedder = Embedder()
+        # Each thread instantiates its own embedder_mlr_test.
+        embedder = Qwen3Embedder()
         texts_and_tokens = [(c[1], c[2]) for c in batch]  # c[1]=text, c[2]=token_count.
         chunk_ids = [c[0] for c in batch]                   # c[0]=chunk_id.
         logger.info("Thread starting processing %d chunks.", len(batch))

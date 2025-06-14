@@ -1,0 +1,2 @@
+Title: A sensitive array-based assay for identifying multiple TMPRSS2:ERG fusion gene variants
+Passage: patterns of interstitial deletion between TMPRSS2 and ERG in a primary prostate tumor. An unpaired green dot suggests an interstitial deletion. Nonrandom variation of FISH patterns is shown by the fact that most of the green and red signals are paired in each panel. This variation is expected on a heterogeneous aneuploid cancer cell population, which often makes it difficult to distinguish meaningful events from random background aberrations.

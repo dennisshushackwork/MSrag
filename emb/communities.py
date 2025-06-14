@@ -7,7 +7,7 @@ from typing import List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Internal Imports:
-from emb.embedder import Embedder
+from emb.embedder_old import Embedder
 from postgres.embedding import EmbeddingQueries
 
 # Initialisation of logger:
@@ -42,7 +42,7 @@ class CommunityGroupEmbedder:
             # If adding the next text would exceed the token limit, embed the current batch.
             if current_batch and (current_token_count + token_count > self.max_tokens_per_batch):
                 logger.info("Embedding a batch with %d texts (%d tokens)", len(current_batch), current_token_count)
-                # Calls the embedder to get embeddings for the current batch of texts.
+                # Calls the embedder_mlr_test to get embeddings for the current batch of texts.
                 batch_result = embedder.embed_texts(current_batch)
                 batched_results.extend(batch_result)
                 # Resets for the next batch.

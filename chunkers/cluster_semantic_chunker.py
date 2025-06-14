@@ -20,7 +20,7 @@ from typing import List, Tuple
 from numba import njit
 import numpy as np
 from emb.gemma_tokenizer import GemmaSingletonTokenizer
-from emb.embedder import Embedder
+from emb.embedder_old import Embedder
 import logging
 from functools import lru_cache
 
@@ -162,11 +162,11 @@ class ImprovedClusterSemanticChunker(BaseChunker):
 
         Args:
             doc_id: Document ID for tracking chunks
-            embedder: Custom embedder instance (creates new one if None)
+            embedder: Custom embedder_mlr_test instance (creates new one if None)
             max_chunk_size: Maximum tokens per final chunk
             **kwargs: Additional arguments
         """
-        # Initialize custom embedder (singleton pattern)
+        # Initialize custom embedder_mlr_test (singleton pattern)
         self.embedder = embedder or Embedder()
 
         # Initialize Gemma tokenizer for accurate token counting
@@ -272,7 +272,7 @@ class ImprovedClusterSemanticChunker(BaseChunker):
 
     def _get_similarity_matrix(self, sentences: List[str]) -> np.ndarray:
         """
-        Calculate similarity matrix between all sentence pairs using your custom embedder.
+        Calculate similarity matrix between all sentence pairs using your custom embedder_mlr_test.
 
         Uses the Alibaba-NLP/gte-multilingual-base model to generate embeddings and compute
         cosine similarity between all sentence pairs. This creates a semantic map of how
@@ -287,14 +287,14 @@ class ImprovedClusterSemanticChunker(BaseChunker):
         BATCH_SIZE = 100  # Process in batches to manage memory
         N = len(sentences)
 
-        logger.info(f"Calculating similarity matrix for {N} sentences using custom embedder")
+        logger.info(f"Calculating similarity matrix for {N} sentences using custom embedder_mlr_test")
 
         # Generate embeddings in batches
         embedding_matrix = None
         for i in range(0, N, BATCH_SIZE):
             batch_sentences = sentences[i:i+BATCH_SIZE]
 
-            # Use custom embedder to generate embeddings (256-dimensional from Alibaba-NLP model)
+            # Use custom embedder_mlr_test to generate embeddings (256-dimensional from Alibaba-NLP model)
             embeddings = self.embedder.embed_texts(batch_sentences, are_queries=False)
 
             # Convert embeddings list to numpy array
@@ -414,7 +414,7 @@ class ImprovedClusterSemanticChunker(BaseChunker):
         This is the main method that orchestrates the entire semantic chunking process:
         1. Split text into sentences using NLTK's robust sentence boundary detection
         2. Pre-compute token data using Gemma tokenizer for fast DP optimization
-        3. Generate embeddings for each sentence using your custom Alibaba-NLP embedder
+        3. Generate embeddings for each sentence using your custom Alibaba-NLP embedder_mlr_test
         4. Calculate semantic similarity matrix between all sentence pairs
         5. Find optimal clustering using Numba-optimized dynamic programming
         6. Post-process to merge small chunks for better context
@@ -442,7 +442,7 @@ class ImprovedClusterSemanticChunker(BaseChunker):
         # Step 2: Pre-compute token data for optimization
         self._precompute_token_data(sentences)
 
-        # Step 3: Calculate similarity matrix using custom embedder
+        # Step 3: Calculate similarity matrix using custom embedder_mlr_test
         similarity_matrix = self._get_similarity_matrix(sentences)
 
         # Step 4: Find optimal clusters using Numba-optimized DP

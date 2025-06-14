@@ -9,16 +9,20 @@ import json
 import logging
 import platform
 import pandas as pd
+from dotenv import load_dotenv
 from typing import List, Tuple, Dict, Optional, Literal
 
 # Internal imports:
-from utils import rigorous_document_search
 from chunkers.chunker import ChunkingService
+from postgres.populate import PopulateQueries
+from emb.chunks import ChunkEmbedder
+from emb.embedder import Qwen3Embedder
+from pipelines.retrieval import Retriever
 
 # Configure logging:
+load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 
 # ------------- Helper Function from Original Evaluation -------------- #
 
@@ -32,7 +36,7 @@ def union_ranges(ranges:List[Tuple[int, int]]):
     """
     Merges a list of possibly overlapping or contiguous ranges into a set of non-overlapping ranges.
     For example, [(0, 5), (3, 8), (10, 12)] becomes [(0, 8), (10, 12)]. This method is cruical for
-    correctly identifying the total relevant span of text
+    correctly identifying the total relevant span of text.
     """
     # Sort ranges based on the starting index
     sorted_ranges = sorted(ranges, key=lambda x: x[0])
@@ -100,20 +104,22 @@ def difference(ranges, target):
         # Else, this range is fully contained by the target, and is thus removed
     return result
 
+
 class PostgresEvaluation:
     """PostgreSQL-based evaluation system for chunking strategies."""
-
     def __init__(self, questions_csv_path: str, corpora_id_paths: Optional[Dict[str, str]] = None):
         """
          Args:
-            questions_csv_path: Path to CSV file containing evaluation questions and references
+            questions_csv_path: Path to CSV file containing evaluation questions and references (
             corpora_id_paths: Dictionary mapping corpus IDs to file paths {finance: /Users/dennis/Documents/GitHub/MSrag/chromabenchmark/dataset/corpora/finance.md}
         """
-        self.questions_csv_path = questions_csv_path
+        self.questions_csv_path = questions_csv_path # Contains
         self.corpora_id_paths = corpora_id_paths
+        self.questions_df = None
         self.corpus_list = [] # Holds the list of all the corpus filenames (ids)
         self.is_general = False
-        self._load_questions_df() # Loads the questions for evaluation
+        self._load_questions_df() # Loads the questions for evaluation.
+        # self._embed_questions() # Embeds the questions for further processing.
 
     def _load_questions_df(self):
         """Load the questions DataFrame from the given questions CSV file.
@@ -130,18 +136,19 @@ class PostgresEvaluation:
         logger.info(f"Loaded {len(self.questions_df)} questions for {len(self.corpus_list)} corpora")
 
 
-    def _process_documents_to_postgres(self, chunk_type: Literal["token", "recursive", "sentence"],
+    def _process_documents_to_postgres(self, chunk_type: Literal["token", "recursive", "cluster"],
                                        chunk_size: int = 400, chunk_overlap: int = 0) -> None:
         """This method generates the chunks using the provided splitter method and then finds the corresponding metadata"""
 
-        # Delete all chunks by type:
-        #with PopulateQueries() as db:
-            #db.clear_chunks_by_type(chunk_type)
+        # Delete all chunks by type & all documents:
+        with PopulateQueries() as db:
+            db.clear_chunks_by_type(chunk_type)
+            db.clear_documents()
 
         # Iterating over all documents (corpora):
         for corpus_id in self.corpus_list:
             corpus_path = corpus_id
-            print(corpus_id)
+            logger.info("Processing corpus %s", corpus_path)
             if self.corpora_id_paths is not None:
                 corpus_path = self.corpora_id_paths[corpus_id]
 
@@ -154,8 +161,8 @@ class PostgresEvaluation:
                     corpus = file.read()
 
             # Insert document into database and get document_id
-            #with PopulateQueries() as db:
-                #doc_id = db.set_document(corpus)
+            with PopulateQueries() as db:
+                doc_id = db.set_document(corpus)
 
             # Create chunks using chunking service
             chunker = ChunkingService(
@@ -163,35 +170,47 @@ class PostgresEvaluation:
                 chunk_type=chunk_type,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
-                doc_id=1,
-                eval=True
+                doc_id=doc_id,
             )
-            current_chunks = chunker.create_chunk_from_document()
-            chunks_with_indices = []
+            # Creating the chunks:
+            chunker.create_chunk_from_document()
 
-            # In your _process_documents_to_postgres method, replace this:
-            chunks_with_indices = []
-            for chunk in current_chunks:
-                try:
-                    print(chunk)
-                    _, start_index, end_index = rigorous_document_search(corpus, chunk[1])
-                    chunk = chunk + (start_index, end_index)
-                    chunks_with_indices.append(chunk)
-                    print(chunk)
-                except Exception as e:
-                    raise Exception(f"Error finding document chunk in {corpus_id}")
+            # Embedd the chunks:
+            embedder = ChunkEmbedder()
+            embedder.process_chunk_emb_batches()
+
+            # Create the entities and relationships: still open.
+        return
+
+
+
+    def _embed_questions(self):
+        """Embedds the questions using the given embedding method."""
+        questions = self.questions_df['question'].tolist()
+        question_embeddings = []
+        embedder = Qwen3Embedder()
+        for question in questions:
+            question_emb = embedder.embed_texts(question, are_queries=True)
+            question_embeddings.append(question_emb)
+        self.questions_df['embedding'] = question_embeddings
+        logger.info(f"Generated embeddings for {len(questions)} questions")
+
+    def _retrive_chunks(self, top_k: int, chunk_type: Literal["token", "recursive", "cluster"]):
+        """Retrieves the chunks based on the given top_k chunk type."""
+        pass
 
 
 
 if __name__ == "__main__":
-    questions_csv_path = "/Users/dennis/Documents/GitHub/MSrag/chromabenchmark/dataset/questions/questions_df.csv"
-    corpora_id_paths = {"finance": "/Users/dennis/Documents/GitHub/MSrag/chromabenchmark/dataset/corpora/finance.md",
-                        "state_of_the_union": "/Users/dennis/Documents/GitHub/MSrag/chromabenchmark/dataset/corpora/state_of_the_union.md",
-                        "wikitexts": "/Users/dennis/Documents/GitHub/MSrag/chromabenchmark/dataset/corpora/wikitexts.md",
-                        "pubmed":"/Users/dennis/Documents/GitHub/MSrag/chromabenchmark/dataset/corpora/pubmed.md",
-                        "chatlogs": "/Users/dennis/Documents/GitHub/MSrag/chromabenchmark/dataset/corpora/chatlogs.md"}
+    questions_csv_path = "/home/dennis/Documents/MSrag/chromabenchmark/dataset/questions_df.csv"
+    corpora_id_paths = {"finance": "/home/dennis/Documents/MSrag/chromabenchmark/dataset/corpora/finance.md",
+                        "state_of_the_union": "/home/dennis/Documents/MSrag/chromabenchmark/dataset/corpora/state_of_the_union.md",
+                        "wikitexts": "/home/dennis/Documents/MSrag/chromabenchmark/dataset/corpora/wikitexts.md",
+                        "pubmed":"/home/dennis/Documents/MSrag/chromabenchmark/dataset/corpora/pubmed.md",
+                        "chatlogs": "/home/dennis/Documents/MSrag/chromabenchmark/dataset/corpora/chatlogs.md"}
     # Initalise:
     evaluator = PostgresEvaluation(questions_csv_path, corpora_id_paths)
+    print(evaluator.questions_df)
     evaluator._process_documents_to_postgres(chunk_type="token")
 
 

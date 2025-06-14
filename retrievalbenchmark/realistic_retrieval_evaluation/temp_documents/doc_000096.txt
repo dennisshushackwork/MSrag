@@ -1,0 +1,2 @@
+Title: Virus-Vectored Influenza Virus Vaccines
+Passage: Early work with intact vaccinia virus vectors raised safety concerns, as there was substantial reactogenicity that hindered recombinant vaccine development . Two vaccinia vectors were developed to address these safety concerns. The modified vaccinia virus Ankara strain was attenuated by passage 530 times in chick embryo fibroblasts cultures. The second, New York vaccinia virus was a plaque-purified clone of the Copenhagen vaccine strain rationally attenuated by deletion of 18 open reading frames .

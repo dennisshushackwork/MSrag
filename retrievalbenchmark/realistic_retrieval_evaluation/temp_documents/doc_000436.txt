@@ -1,0 +1,2 @@
+Title: Optimization Method for Forecasting Confirmed Cases of COVID-19 in China
+Passage: This paper aims to assess the ability of the FPASSA to forecast the COVID-19 by comparing its performance with other methods, namely the ANFIS and the trained ANFIS models using PSO, GA, ABC, FPA, and FPASSA. The parameters' setting for these models is listed in Table 2 .

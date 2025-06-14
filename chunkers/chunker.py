@@ -8,8 +8,8 @@ from typing import Literal, List
 
 # Internal Imports:
 from chunkers.token_chunker import FixedTokenChunker
-from chunkers.recursive_chunker import RecursiveTokenChunker
-from chunkers.cluster_semantic_chunker import ImprovedClusterSemanticChunker
+from chunkers.recursive_chunker import PositionTrackingRecursiveChunker
+from chunkers.cluster_simple import ClusterSemanticChunker
 from emb.chunks import ChunkEmbedder
 from postgres.populate import PopulateQueries
 
@@ -19,8 +19,8 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 class ChunkingService:
-    def __init__(self, doc: str, chunk_type: Literal["token", "recursive", "sentence"], chunk_size: int = 400,
-                 chunk_overlap: int = 100, doc_id: int = 1, eval=False):
+    def __init__(self, doc: str, chunk_type: Literal["token", "recursive", "cluster"], chunk_size: int = 400,
+                 chunk_overlap: int = 100, doc_id: int = 1):
         self.doc = doc
         self.doc_id = doc_id
         self.chunk_type = chunk_type
@@ -35,28 +35,26 @@ class ChunkingService:
             chunker = FixedTokenChunker(self.doc_id, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
             chunks = chunker.split_text(self.doc)
         elif self.chunk_type == "recursive":
-            chunker = RecursiveTokenChunker(self.doc_id, self.chunk_size, self.chunk_overlap)
+            chunker = PositionTrackingRecursiveChunker(self.doc_id, self.chunk_size, self.chunk_overlap)
             chunks = chunker.split_text(self.doc)
         elif self.chunk_type == "cluster":
-            chunker = ImprovedClusterSemanticChunker(doc_id=self.doc_id, max_chunk_size=self.chunk_size)
+            chunker = ClusterSemanticChunker(doc_id=self.doc_id, max_chunk_size=self.chunk_size)
             chunks = chunker.split_text(self.doc)
         else:
             chunks = []
 
-        if eval:
-            return chunks
-        else:
-            # Inserts the chunk into the database:
-            self.insert_chunks_into_db(chunks)
-            # Creates the embedding for the chunks:
-            embedder = ChunkEmbedder()
-            embedder.process_chunk_emb_batches()
+
+        # Inserts the chunk into the database:
+        self.insert_chunks_into_db(chunks)
+        # Creates the embedding for the chunks:
+        embedder = ChunkEmbedder()
+        embedder.process_chunk_emb_batches()
 
     @staticmethod
     def insert_chunks_into_db(chunks: List[tuple]) -> None:
         """Insert the chunks into the database"""
         with PopulateQueries() as db:
-            db.set_chunks(chunks)
+            db.set_chunks_with_positions(chunks)
         logger.info("Chunks have been added to the database!")
 
 

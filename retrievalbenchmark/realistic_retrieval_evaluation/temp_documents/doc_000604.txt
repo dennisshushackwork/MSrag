@@ -1,0 +1,1 @@
+[["", "total cost of shares purchased", "total number of shares purchased", "average price paid per share"], ["2015", "$ 2182180", "26751.0", "$ 81.57"], ["2014", "$ 4677687", "47545.9", "$ 98.38"], ["2013", "$ 2596447", "31349.5", "$ 82.82"]]

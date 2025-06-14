@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # Internal imports:
 from pipelines.retrieval import Retriever
 from graphdatabase.kuzudb import KuzuDB
-from emb.embedder import Embedder
+from emb.embedder_old import Embedder
 
 # Load environmental variables:
 load_dotenv(verbose=True)
@@ -56,7 +56,7 @@ class GraphRetrievalAPIResponse(BaseModel):
 # Initializes the Database and closes the connection:
 kuzu_db = KuzuDB(create=True)
 kuzu_db.close_connection()
-# Initializes the embedder used later:
+# Initializes the embedder_mlr_test used later:
 embedder = Embedder()
 
 app = FastAPI(
@@ -113,10 +113,6 @@ async def api_perform_graph_retrieval(request: GraphRetrievalRequest = Body(...)
     except Exception as e:
         logger.error(f"Error during graph retrieval for query '{request.query}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An error occurred during graph retrieval: {str(e)}")
-
-
-
-
 
 # --- Health Check Endpoint ---
 @app.get("/health", tags=["System"])

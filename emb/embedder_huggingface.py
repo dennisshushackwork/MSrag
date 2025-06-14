@@ -27,20 +27,20 @@ class Embedder:
     Embedding Service using the Singleton Design Pattern.
     Loads Alibaba-NLP/gte-multilingual-base from local directory.
     """
-    _instance = None  # Holds the instance of the embedder
+    _instance = None  # Holds the instance of the embedder_mlr_test
     _is_initialized = False  # Flag for embedding initialization
     TRUNCATION_DIM = 256
 
     def __new__(cls, model_path: str = None):
-        """Creates a new embedder instance."""
+        """Creates a new embedder_mlr_test instance."""
         if cls._instance is None:
-            logger.info("Creating new embedder instance.")
+            logger.info("Creating new embedder_mlr_test instance.")
             cls._instance = super(Embedder, cls).__new__(cls)
         return cls._instance
 
     def __init__(self, model_path: str = None):
         """
-        Initializes a new embedder instance.
+        Initializes a new embedder_mlr_test instance.
 
         Args:
             model_path: Path to local model directory. If None, uses default path.
@@ -63,9 +63,9 @@ class Embedder:
             if not os.path.exists(os.path.join(model_path, file)):
                 logger.warning(f"Required file {file} not found in {model_path}")
 
-        logger.info(f"Initializing embedder with local model from: {model_path}")
+        logger.info(f"Initializing embedder_mlr_test with local model from: {model_path}")
         self.model_path = model_path
-        self.max_tokens = 8192  # Maximum tokens the embedder can handle at once
+        self.max_tokens = 8192  # Maximum tokens the embedder_mlr_test can handle at once
 
         # 1) Pick the correct device:
         if torch.cuda.is_available():

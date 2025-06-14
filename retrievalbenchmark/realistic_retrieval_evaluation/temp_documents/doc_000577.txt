@@ -1,0 +1,2 @@
+Title: UNC93B1 Mediates Innate Inflammation and Antiviral Defense in the Liver during Acute Murine Cytomegalovirus Infection
+Passage: 4-fold fewer PDCA-1+ pDCs expressing intracellular IFN-a at 40 h, and 3-fold fewer at 48 h post-infection, in 3d mice as compared to WT . This trend was also reflected in the proportion of PDCA-1+ IFN-a+ pDCs at 40 h and 48 h after infection in 3d mice compared with WT .

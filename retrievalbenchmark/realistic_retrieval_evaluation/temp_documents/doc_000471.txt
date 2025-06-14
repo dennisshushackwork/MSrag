@@ -1,0 +1,2 @@
+Title: Development of a cell-based assay to identify hepatitis B virus entry inhibitors targeting the sodium taurocholate cotransporting polypeptide
+Passage: other auxiliary transporters, such as OATP, may compensate when NTCP is absent . Although these reports hint that transient downregulation of NTCP might not induce immediate adverse effects on the liver, the effect should be further investigated in in vivo models to determine whether NTCP inhibition is a reasonable anti-HBV drug target.

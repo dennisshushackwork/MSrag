@@ -65,8 +65,8 @@ class DataPipeline:
 
 if __name__ == "__main__":
     pipeline = DataPipeline()
-    doc = pipeline.parse_document("/Users/dennis/Desktop/obama.pdf")
+    doc = pipeline.parse_document("/home/dennis/Documents/MSrag/a.pdf")
     doc, doc_id = pipeline.insert_document_into_db(doc)
     pipeline.create_chunks(doc_id=doc_id, doc=doc, chunk_type="recursive")
-    pipeline.create_knowledge_graph(doc_id, model="openai")
+    #pipeline.create_knowledge_graph(doc_id, model="openai")
 

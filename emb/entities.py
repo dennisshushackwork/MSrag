@@ -9,7 +9,7 @@ from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Internal Imports:
-from emb.embedder import Embedder
+from emb.embedder import Qwen3Embedder
 from postgres.embedding import EmbeddingQueries
 
 # Setting the logger:
@@ -21,11 +21,11 @@ class EntityEmbedder:
     """This class embeds the entities inside the database concurrently using multiple threads."""
 
     def __init__(self):
-        self.max_tokens_per_batch = 7000  # Maximum allowed tokens per embedding call
-        self.batch_size = 100  # Batches of entities (100 max)
+        self.max_tokens_per_batch = 20000  # Maximum allowed tokens per embedding call
+        self.batch_size = 10000  # Batches of entities (100 max)
         self.max_workers = 4  # Number of concurrent threads
 
-    def batch_embed_texts(self, embedder: Embedder, texts_and_token_count: List[tuple]) -> List:
+    def batch_embed_texts(self, embedder: Qwen3Embedder, texts_and_token_count: List[tuple]) -> List:
         """
         Batches texts so that each embedding call doesn't exceed max_tokens_per_batch.
         `texts_and_token_count` is a list of tuples: (text, token_count).
@@ -34,11 +34,10 @@ class EntityEmbedder:
         current_batch = []
         current_token_count = 0
 
-
         for text, token_count in texts_and_token_count:
             if current_batch and (current_token_count + token_count > self.max_tokens_per_batch):
                 logger.info("Embedding a batch with %d texts (%d tokens)", len(current_batch), current_token_count)
-                batch_result = embedder.embed_texts(current_batch)
+                batch_result = embedder.embed_texts_custom_dim(texts=current_batch, embedding_dim=256)
                 batched_results.extend(batch_result)
                 current_batch = []
                 current_token_count = 0
@@ -47,7 +46,7 @@ class EntityEmbedder:
 
         if current_batch:
             logger.info("Embedding final batch with %d texts (%d tokens)", len(current_batch), current_token_count)
-            batch_result = embedder.embed_texts(current_batch)
+            batch_result = embedder.embed_texts_custom_dim(current_batch, embedding_dim=256)
             batched_results.extend(batch_result)
         return batched_results
 
@@ -72,8 +71,8 @@ class EntityEmbedder:
           - Updates the database.
         Returns the number of processed entities.
         """
-        # Each thread instantiates its own embedder
-        embedder = Embedder()
+        # Each thread instantiates its own embedder_mlr_test
+        embedder = Qwen3Embedder()
 
         # Gets all the entities to embed:
         entities_to_embed = [e for e in batch]

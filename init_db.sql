@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS Chunk (
     chunk_type        TEXT,
     start_index       INTEGER,
     end_index         INTEGER,
-    chunk_emb         VECTOR(256),
+    chunk_emb         VECTOR(1024),
     chunk_embed       BOOLEAN DEFAULT FALSE
 );
 

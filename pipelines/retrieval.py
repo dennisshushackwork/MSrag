@@ -8,6 +8,7 @@ import time
 import logging
 import asyncio
 from dotenv import load_dotenv
+from typing import Optional
 
 # Define the logging handler:
 load_dotenv(verbose=False)
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 from llm.prompts.rag.reponse import RagPrompt
 from llm.prompts.graphrag.agent import RelationshipAgent
 from llm.prompts.graphrag.entities import EntityExtractor
-from emb.embedder import Embedder
+from emb.embedder import Qwen3Embedder
 from postgres.retrieval import RetrievalQueries
 from graphdatabase.dfs import DFS
 
@@ -39,7 +40,7 @@ class Retriever:
     These chunks are then used to create the answer.
     """
     def __init__(self, model: str):
-        self.embedder = Embedder()
+        self.embedder = Qwen3Embedder()
         self.max_length = int(os.getenv("CONTEXT"))
         self.model = model
 
@@ -50,7 +51,7 @@ class Retriever:
         """
         context_length = 0
         for chunk in context_chunks:
-            context_length += chunk[2]
+            context_length += chunk["tokens"]
         if context_length> max_length:
             logger.info("Context too large, removing least relevant chunk")
             context_chunks = context_chunks[:-1]
@@ -58,24 +59,74 @@ class Retriever:
         return context_chunks, context_length
 
     # --------------- Performs RAG ------------------- #
-
-    def chunk_retrieval(self, query: str, chunking_method: str):
-        """Simple RAG retrieval (normal RAG)"""
+    def semantic_retrieval(self, query: str, chunking_method: str, top_k: Optional[int] = None, chroma: Optional[bool] = False, re_ranker: Optional[bool] = False):
+        """Performs semantic retrieval with or without re-ranking"""
         start = time.time()
-        chunks = []
         return_response = []
 
         # Embed the input:
-        embedding = str(self.embedder.embed_texts([query])[0])
+        custom_instruction = "Retrieve relevant documents that answer the user's question"
+        embedding = str(self.embedder.embed_texts([query], are_queries=True, custom_instruction=custom_instruction)[0])
 
-        # Performs hybrid search to gather the context for RAG:
-        with RetrievalQueries() as db:
-            chunks = db.hybrid_search(query, embedding, chunking_method)
+        context_chunks = []
+        if re_ranker == False:
+            # Performs hybrid search to gather the context for RAG:
+            with RetrievalQueries() as db:
+                # Retrieve the chunks:
+                chunks = db.semantic_search(embedding, chunking_method, limit=top_k)
+                # Checks that it does not go over the max context:
+                context_chunks, context_length = self.context_size_chunk(chunks, int(os.getenv("CONTEXT")))
+                if chroma:
+                    return chunks
+        else:
+              with RetrievalQueries() as db:
+                # Semantic search and Rerank the documents:
+                instruction="Find information that directly answers the user's question"
+                reranked_chunks = db.semantic_search_with_reranking(query, embedding, chunking_method, final_top_k=top_k, instruction=instruction, initial_limit=20)
+                # Checks that it does not go over the max context:
+                context_chunks, context_length = self.context_size_chunk(reranked_chunks, int(os.getenv("CONTEXT")))
+                if chroma:
+                    return context_chunks
 
-        # Makes sure the context lenght is below 8000:
-        context_chunks, context_length = self.context_size_chunk(chunks, int(os.getenv("CONTEXT")))
-        text_chunks = [chunk[1] for chunk in context_chunks]
+        text_chunks = [chunk["content"] for chunk in context_chunks]
+        # We now perform the RAG query with the provided context:
+        rag_prompt = RagPrompt(query, context=text_chunks, model=self.model)
+        response = rag_prompt.generate_response()
+        end = time.time()
+        request_time = end - start
+        print(f"Request time: {request_time}")
+        return_response.extend([response, request_time, context_length])
+        return return_response
 
+    def hybrid_search(self, query: str, chunking_method: str, top_k: Optional[int] = None, chroma: Optional[bool] = False, re_ranker: Optional[bool] = False):
+        """Performs semantic retrieval with or without re-ranking"""
+        start = time.time()
+        return_response = []
+
+        # Embed the input:
+        custom_instruction = "Retrieve relevant documents that answer the user's question"
+        embedding = str(self.embedder.embed_texts([query], are_queries=True, custom_instruction=custom_instruction)[0])
+        context_chunks = []
+        if re_ranker == False:
+            # Performs hybrid search to gather the context for RAG:
+            with RetrievalQueries() as db:
+                # Retrieve the chunks:
+                chunks = db.hybrid_search(query_text=query, query_embedding=embedding, chunk_type=chunking_method, final_limit=top_k)
+                # Checks that it does not go over the max context:
+                context_chunks, context_length = self.context_size_chunk(chunks, int(os.getenv("CONTEXT")))
+                if chroma:
+                    return context_chunks
+        else:
+              with RetrievalQueries() as db:
+                # Semantic search and Rerank the documents:
+                instruction="Find information that directly answers the user's question."
+                reranked_chunks = db.semantic_search_with_reranking(query, embedding, chunking_method, final_top_k=top_k, instruction=instruction, initial_limit=20)
+                # Checks that it does not go over the max context:
+                context_chunks, context_length = self.context_size_chunk(reranked_chunks, int(os.getenv("CONTEXT")))
+                if chroma:
+                    return context_chunks
+
+        text_chunks = [chunk["content"] for chunk in context_chunks]
         # We now perform the RAG query with the provided context:
         rag_prompt = RagPrompt(query, context=text_chunks, model=self.model)
         response = rag_prompt.generate_response()
@@ -157,21 +208,15 @@ class Retriever:
             "context_length": int(context_length)
         }
 
-
-
-
-
-
 async def main():
     """Main entry point for running the retriever"""
     rag = Retriever(model="openai")
 
     # Uncomment the line you want to run:
-    # response = rag.chunk_retrieval(query="Who is obama's wife?", chunking_method="recursive")
-    response = await rag.graph_retrieval(query="Who is Michelle Obama? What is the wife of Obama?")
-    return response
-
-
+    #response = rag.chunk_retrieval(query="What is the tower building?", chunking_method="token", chroma=True, top_k=5)
+    response = rag.hybrid_search(query=" did compensation expense related to the company 2019s employee stock purchase plan grow from 2004 to 2005?", chunking_method="token", chroma=False, top_k=5, re_ranker=True)
+    #response = await rag.graph_retrieval(query="Who is Michelle Obama? What is the wife of Obama?")
+    print(response)
 
 if __name__ == '__main__':
     asyncio.run(main())

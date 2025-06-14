@@ -1,0 +1,1 @@
+[["", "2017", "2016", "2015"], ["initial health care trend rate", "8.00% ( 8.00 % )", "8.25% ( 8.25 % )", "8.00% ( 8.00 % )"], ["ultimate trend rate", "4.70% ( 4.70 % )", "4.50% ( 4.50 % )", "4.50% ( 4.50 % )"], ["year ultimate trend rate is reached", "2025", "2025", "2024"]]

@@ -40,6 +40,14 @@ class PopulateQueries(Postgres):
         self.conn.commit()
         return document_id
 
+    def clear_documents(self) -> None:
+        """Clears all the documents from the database."""
+        query = """
+        DELETE FROM DOCUMENT;
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+
 # -------------------------- Chunk Specific Queries (populate db) -------------------------------- #
     def set_chunks(self, values) -> None:
         """Adds chunks into the database and returns them (without the embedding)."""
@@ -56,10 +64,10 @@ class PopulateQueries(Postgres):
         """
         query = """
                INSERT INTO Chunk (chunk_document_id, chunk_text, chunk_tokens, chunk_type, chunk_embed, start_index, end_index) 
-               VALUES (%s, %s, %s, %s, %s, %s)
+               VALUES %s
                """
         with self.conn.cursor() as cur:
-            cur.executemany(query, chunks)
+            execute_values(cur, query, chunks, page_size=100)
 
     def load_chunks_in_batches(self, document_id: int, batch_size: Optional[int] = 10, offset: int = 0) -> List[tuple]:
         """ Loads chunks in batches for KG-Construction using pagination with LIMIT and OFFSET"""

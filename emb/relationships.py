@@ -8,7 +8,7 @@ from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Internal Imports:
-from emb.embedder import Embedder
+from emb.embedder_old import Embedder
 from postgres.embedding import EmbeddingQueries
 
 # Setting the logger:
@@ -69,7 +69,7 @@ class RelEmbedder:
           - Updates the database.
         Returns the number of processed entities.
         """
-        # Each thread instantiates its own embedder
+        # Each thread instantiates its own embedder_mlr_test
         embedder = Embedder()
 
         rels_to_embed = [r for r in batch]

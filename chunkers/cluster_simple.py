@@ -1,13 +1,26 @@
 """
-Cluster Semantic Chunker following the main author's implementation pattern.
-Adapted to use your custom embedder and tokenizer while maintaining the same logic flow.
+Cluster Semantic Chunker with Position Tracking
+
+This implementation follows the main author's implementation pattern, adapted to use
+your custom embedder_mlr_test and tokenizer while maintaining the same logic flow.
 Optimized with Numba for high-performance computation.
+
+Enhanced with precise position tracking to map cluster chunks back to their
+exact locations in the original document.
+
+Key Features:
+- Uses RecursiveTokenChunker to create initial small chunks with position tracking
+- Generates embeddings for these chunks using your custom embedder_mlr_test
+- Builds similarity matrix between all chunk pairs
+- Uses dynamic programming to find optimal clustering
+- Maps cluster boundaries back to original document positions
+- Returns final merged chunks with accurate start/end indices
 """
 from chunkers.base import BaseChunker
-from chunkers.recursive_chunker import RecursiveTokenChunker  # Your recursive chunker
-from typing import List
+from chunkers.recursive_chunker import PositionTrackingRecursiveChunker, ChunkWithPosition
+from typing import List, Tuple
 import numpy as np
-from emb.embedder import Embedder
+from emb.embedder_old import Embedder
 from emb.gemma_tokenizer import GemmaSingletonTokenizer
 import logging
 from numba import njit
@@ -20,9 +33,12 @@ def _calculate_reward_numba(matrix: np.ndarray, start: int, end: int) -> float:
     """
     Numba-optimized reward calculation for clustering chunks from start to end.
 
+    This function calculates the total similarity reward for clustering chunks
+    together by summing all pairwise similarities within the cluster.
+
     Args:
-        matrix: Similarity matrix
-        start: Start index of cluster
+        matrix: Similarity matrix between chunks
+        start: Start index of cluster (inclusive)
         end: End index of cluster (inclusive)
 
     Returns:
@@ -43,18 +59,28 @@ def _optimal_segmentation_numba(
     """
     Numba-optimized dynamic programming for optimal segmentation.
 
+    This implements the core dynamic programming algorithm to find the optimal
+    way to cluster consecutive chunks to maximize total similarity while
+    respecting cluster size constraints.
+
+    
+
     Args:
-        matrix: Normalized similarity matrix
+        matrix: Normalized similarity matrix between chunks
         max_cluster_size: Maximum number of chunks per cluster
 
     Returns:
         Array where segmentation[i] = start index of cluster ending at i
     """
     n = matrix.shape[0]
-    dp = np.zeros(n, dtype=np.float64)  # dp[i] = maximum reward for segmenting 0..i
-    segmentation = np.zeros(n, dtype=np.int32)  # segmentation[i] = start of cluster ending at i
 
-    # Dynamic programming
+    # dp[i] = maximum reward for segmenting chunks 0..i
+    dp = np.zeros(n, dtype=np.float64)
+
+    # segmentation[i] = start of cluster ending at i
+    segmentation = np.zeros(n, dtype=np.int32)
+
+    # Dynamic programming to find optimal segmentation
     for i in range(n):
         for size in range(1, max_cluster_size + 1):
             if i - size + 1 >= 0:
@@ -76,14 +102,18 @@ def _optimal_segmentation_numba(
 
 class ClusterSemanticChunker(BaseChunker):
     """
-    Cluster Semantic Chunker following the main author's implementation pattern.
+    Cluster Semantic Chunker with Position Tracking
 
-    This implementation:
-    1. Uses RecursiveTokenChunker to create initial small chunks (like sentences)
-    2. Generates embeddings for these chunks using your custom embedder
+    This implementation follows the main author's implementation pattern, enhanced
+    with precise position tracking capabilities.
+
+    The chunking process:
+    1. Uses PositionTrackingRecursiveChunker to create initial small chunks with positions
+    2. Generates embeddings for these chunks using your custom embedder_mlr_test
     3. Builds similarity matrix between all chunk pairs
     4. Uses dynamic programming to find optimal clustering
-    5. Returns final merged chunks
+    5. Maps cluster boundaries back to original document positions
+    6. Returns final merged chunks with accurate start/end indices
     """
 
     def __init__(
@@ -99,26 +129,26 @@ class ClusterSemanticChunker(BaseChunker):
 
         Args:
             doc_id: Document ID for tracking chunks
-            embedding_function: Custom embedding function (uses your embedder if None)
+            embedding_function: Custom embedding function (uses your embedder_mlr_test if None)
             max_chunk_size: Maximum size of final chunks in tokens
             min_chunk_size: Size of initial chunks for clustering
             **kwargs: Additional arguments
         """
-        # Initialize your recursive chunker for initial splitting
-        self.splitter = RecursiveTokenChunker(
+        # Initialize your recursive chunker for initial splitting with position tracking
+        self.splitter = PositionTrackingRecursiveChunker(
             doc_id=doc_id,
             chunk_size=min_chunk_size,
             chunk_overlap=0,
             separators=["\n\n", "\n", ".", "?", "!", " ", ""]
         )
 
-        # Initialize your custom embedder and tokenizer
+        # Initialize your custom embedder_mlr_test and tokenizer
         self.embedder = Embedder()
         self.tokenizer = GemmaSingletonTokenizer()
 
         # Set up embedding function
         if embedding_function is None:
-            # Use your custom embedder
+            # Use your custom embedder_mlr_test
             self.embedding_function = self._custom_embedding_function
         else:
             self.embedding_function = embedding_function
@@ -127,17 +157,20 @@ class ClusterSemanticChunker(BaseChunker):
         self._chunk_size = max_chunk_size
         self.max_cluster = max_chunk_size // min_chunk_size
 
-        logger.info(f"Initialized ClusterSemanticChunker with Numba optimization - max_chunk_size={max_chunk_size}, min_chunk_size={min_chunk_size}")
+        logger.info(f"Initialized ClusterSemanticChunker with position tracking - max_chunk_size={max_chunk_size}, min_chunk_size={min_chunk_size}")
 
     def _custom_embedding_function(self, texts: List[str]) -> List[List[float]]:
         """
-        Wrapper for your custom embedder to match the expected interface.
+        Wrapper for your custom embedder_mlr_test to match the expected interface.
+
+        This method adapts your embedder_mlr_test to work with the clustering algorithm,
+        ensuring embeddings are generated for similarity calculation.
 
         Args:
             texts: List of text strings to embed
 
         Returns:
-            List of embedding vectors
+            List of embedding vectors for similarity calculation
         """
         return self.embedder.embed_texts(texts, are_queries=False)
 
@@ -145,19 +178,22 @@ class ClusterSemanticChunker(BaseChunker):
         """
         Calculate similarity matrix between all sentence pairs.
 
+        This method generates embeddings for all chunks and computes their
+        pairwise cosine similarities, forming the basis for clustering decisions.
+
         Args:
             embedding_function: Function to generate embeddings
             sentences: List of sentence/chunk strings
 
         Returns:
-            NxN similarity matrix
+            NxN similarity matrix where entry (i,j) is similarity between chunks i and j
         """
         BATCH_SIZE = 500  # Process in batches to manage memory
         N = len(sentences)
 
         logger.info(f"Calculating similarity matrix for {N} chunks")
 
-        # Generate embeddings in batches
+        # Generate embeddings in batches to handle large documents
         embedding_matrix = None
         for i in range(0, N, BATCH_SIZE):
             batch_sentences = sentences[i:i+BATCH_SIZE]
@@ -182,9 +218,12 @@ class ClusterSemanticChunker(BaseChunker):
         """
         Calculate reward for clustering chunks from start to end using Numba optimization.
 
+        This method leverages the Numba-optimized function for fast reward calculation,
+        which is critical for the dynamic programming algorithm's performance.
+
         Args:
-            matrix: Similarity matrix
-            start: Start index of cluster
+            matrix: Similarity matrix between chunks
+            start: Start index of cluster (inclusive)
             end: End index of cluster (inclusive)
 
         Returns:
@@ -201,6 +240,10 @@ class ClusterSemanticChunker(BaseChunker):
         """
         Find optimal segmentation using Numba-optimized dynamic programming.
 
+        This method implements the core clustering algorithm that determines the
+        optimal way to group consecutive chunks to maximize semantic coherence
+        while respecting size constraints.
+
         Args:
             matrix: Similarity matrix between chunks
             max_cluster_size: Maximum number of chunks per cluster
@@ -209,7 +252,7 @@ class ClusterSemanticChunker(BaseChunker):
         Returns:
             List of (start, end) tuples representing optimal clusters
         """
-        # Normalize matrix by subtracting mean
+        # Normalize matrix by subtracting mean to focus on above-average similarities
         mean_value = np.mean(matrix[np.triu_indices(matrix.shape[0], k=1)])
         matrix = matrix - mean_value
         np.fill_diagonal(matrix, 0)  # Remove self-similarity
@@ -217,7 +260,7 @@ class ClusterSemanticChunker(BaseChunker):
         n = matrix.shape[0]
         logger.info(f"Starting Numba-optimized DP with mean similarity: {mean_value:.4f}")
 
-        # Use Numba-optimized segmentation
+        # Use Numba-optimized segmentation for performance
         segmentation = _optimal_segmentation_numba(matrix, max_cluster_size)
 
         # Reconstruct optimal clusters from segmentation array
@@ -232,14 +275,17 @@ class ClusterSemanticChunker(BaseChunker):
         logger.info(f"Found {len(clusters)} optimal clusters using Numba optimization")
         return clusters
 
-    def _merge_small_chunks(self, clusters: List[tuple], sentences: List[str], min_final_size: int = 80) -> List[tuple]:
+    def _merge_small_chunks(self, clusters: List[tuple], chunks: List[ChunkWithPosition], min_final_size: int = 80) -> List[tuple]:
         """
         Post-process clusters to merge small final chunks when possible.
 
+        This method combines adjacent clusters if they're small and the combination
+        doesn't exceed the maximum chunk size, helping to avoid tiny final chunks.
+
         Args:
             clusters: List of (start, end) cluster tuples
-            sentences: List of sentence strings
-            min_final_size: Minimum tokens for final chunks
+            chunks: List of ChunkWithPosition objects with token counts
+            min_final_size: Minimum tokens for final chunks before considering merge
 
         Returns:
             List of merged cluster tuples
@@ -251,24 +297,19 @@ class ClusterSemanticChunker(BaseChunker):
         current_cluster = clusters[0]
 
         for next_cluster in clusters[1:]:
-            # Calculate token counts
-            current_text = ' '.join(sentences[current_cluster[0]:current_cluster[1]+1])
-            current_tokens = self.tokenizer.count_tokens(current_text)
+            # Calculate token counts for current and next clusters
+            current_tokens = sum(chunks[i].token_count for i in range(current_cluster[0], current_cluster[1] + 1))
+            next_tokens = sum(chunks[i].token_count for i in range(next_cluster[0], next_cluster[1] + 1))
+            combined_tokens = current_tokens + next_tokens
 
-            next_text = ' '.join(sentences[next_cluster[0]:next_cluster[1]+1])
-            next_tokens = self.tokenizer.count_tokens(next_text)
-
-            # Check if we can merge
-            combined_text = ' '.join(sentences[current_cluster[0]:next_cluster[1]+1])
-            combined_tokens = self.tokenizer.count_tokens(combined_text)
-
+            # Check if we should merge these clusters
             should_merge = (
                 combined_tokens <= self._chunk_size and
                 (current_tokens < min_final_size or next_tokens < min_final_size)
             )
 
             if should_merge:
-                # Merge clusters
+                # Merge clusters by extending the end boundary
                 current_cluster = (current_cluster[0], next_cluster[1])
                 logger.debug(f"Merged small chunks: {current_tokens} + {next_tokens} = {combined_tokens} tokens")
             else:
@@ -284,109 +325,130 @@ class ClusterSemanticChunker(BaseChunker):
 
     def split_text(self, text: str) -> List[tuple]:
         """
-        Split text into semantically coherent chunks.
+        Split text into semantically coherent chunks with precise position tracking.
 
-        This is the main method that:
-        1. Uses RecursiveTokenChunker to create initial small chunks
-        2. Generates embeddings for these chunks
+        This is the main method that orchestrates the entire clustering process:
+        1. Uses PositionTrackingRecursiveChunker to create initial small chunks with positions
+        2. Generates embeddings for these chunks using your custom embedder_mlr_test
         3. Finds optimal clustering using dynamic programming
-        4. Post-processes to merge very small final chunks
-        5. Returns merged chunks in the required format
+        4. Maps cluster boundaries back to original document positions
+        5. Post-processes to merge very small final chunks
+        6. Returns merged chunks with accurate position information
 
         Args:
             text: Input text to chunk
 
         Returns:
-            List of tuples in format: (doc_id, chunk_text, token_count, "cluster", True)
+            List of tuples in format: (doc_id, chunk_text, token_count, "cluster", True, start_index, end_index)
         """
-        logger.info("Starting Numba-optimized cluster semantic chunking process")
+        logger.info("Starting cluster semantic chunking with position tracking")
 
-        # Step 1: Split text into initial small chunks using recursive chunker
-        initial_chunks = self.splitter.split_text(text)
+        # Step 1: Split text into initial small chunks with position tracking
+        initial_chunks = self.splitter.split_text_with_positions(text)
 
-        # Extract just the text from the tuples returned by recursive chunker
-        sentences = [chunk_text for _, chunk_text, _, _, _ in initial_chunks]
+        # Extract just the text from the chunks for clustering analysis
+        sentences = [chunk.text for chunk in initial_chunks]
 
         logger.info(f"Created {len(sentences)} initial chunks for clustering")
 
         if len(sentences) <= 1:
             # If only one chunk, return as-is but change type to "cluster"
-            if sentences:
-                token_count = self.tokenizer.count_tokens(sentences[0])
-                return [(self._doc_id, sentences[0], token_count, "cluster", True)]
+            if initial_chunks:
+                chunk = initial_chunks[0]
+                return [(self._doc_id, chunk.text, chunk.token_count, "cluster", True,
+                        chunk.start_index, chunk.end_index)]
             else:
                 return []
 
-        # Step 2: Calculate similarity matrix using custom embedder
+        # Step 2: Calculate similarity matrix using custom embedder_mlr_test
         similarity_matrix = self._get_similarity_matrix(self.embedding_function, sentences)
 
         # Step 3: Find optimal clusters using dynamic programming
         clusters = self._optimal_segmentation(similarity_matrix, max_cluster_size=self.max_cluster)
 
         # Step 4: Post-process to merge very small chunks
-        merged_clusters = self._merge_small_chunks(clusters, sentences, min_final_size=80)
+        merged_clusters = self._merge_small_chunks(clusters, initial_chunks, min_final_size=80)
 
-        # Step 5: Combine clusters into final chunks
+        # Step 5: Create final chunks with precise position mapping
         result = []
-        for i, (start, end) in enumerate(merged_clusters):
-            # Combine sentences in cluster
-            chunk_text = ' '.join(sentences[start:end+1])
-            token_count = self.tokenizer.count_tokens(chunk_text)
+        for i, (start_idx, end_idx) in enumerate(merged_clusters):
+            # Get the chunks in this cluster
+            cluster_chunks = initial_chunks[start_idx:end_idx + 1]
 
-            # Add to result in required format
-            result.append((self._doc_id, chunk_text, token_count, "cluster", True))
+            # Combine the text from all chunks in the cluster
+            chunk_text = ' '.join(chunk.text for chunk in cluster_chunks)
 
-            logger.debug(f"Final Cluster {i+1}: chunks {start}-{end}, {token_count} tokens")
+            # Calculate total token count
+            token_count = sum(chunk.token_count for chunk in cluster_chunks)
 
-        logger.info(f"Created {len(result)} final cluster chunks using Numba optimization")
+            # Determine start and end positions in original document
+            # Use the first chunk's start and last chunk's end for precise mapping
+            chunks_with_positions = [c for c in cluster_chunks if c.start_index is not None]
+
+            if chunks_with_positions:
+                # Map to original document positions
+                start_index = chunks_with_positions[0].start_index
+                end_index = chunks_with_positions[-1].end_index
+
+                logger.debug(f"Cluster {i+1}: chunks {start_idx}-{end_idx}, {token_count} tokens, positions {start_index}-{end_index}")
+            else:
+                # Fallback: estimate positions or use None
+                logger.warning(f"Cluster {i+1}: No position info available for chunks {start_idx}-{end_idx}")
+                start_index = None
+                end_index = None
+
+            # Always create result tuple with consistent format
+            result.append((
+                self._doc_id,
+                chunk_text,
+                token_count,
+                "cluster",
+                True,
+                start_index,
+                end_index
+            ))
+
+        logger.info(f"Created {len(result)} final cluster chunks with position tracking")
         return result
 
 
 # Example usage and testing
 if __name__ == "__main__":
-    # Initialize the cluster semantic chunker
+    # Initialize the cluster semantic chunker with position tracking
     chunker = ClusterSemanticChunker(
         doc_id=1,
         max_chunk_size=400,
         min_chunk_size=50
     )
 
-    # Test with sample text
+    # Test with sample text that demonstrates semantic clustering
     test_text = """
-    Artificial intelligence (AI) is intelligence demonstrated by machines, 
-    in contrast to the natural intelligence displayed by humans and animals. 
-    Leading AI textbooks define the field as the study of "intelligent agents": 
-    any device that perceives its environment and takes actions that maximize 
-    its chance of successfully achieving its goals.
-    
-    Machine learning is a subset of artificial intelligence that focuses on 
-    algorithms that can learn and make decisions from data. Deep learning, 
-    a subset of machine learning, uses neural networks with multiple layers 
-    to model and understand complex patterns in data.
-    
-    Natural language processing (NLP) is another important area of AI that 
-    deals with the interaction between computers and human language. It involves 
-    developing algorithms that can understand, interpret, and generate human language.
+    Good evening. If I were smart, I'd go home now. Mr. Speaker, Madam Vice President, 
+    members of Congress, my fellow Americans. In January 1941, Franklin Roosevelt came 
+    to this chamber to speak to the nation. And he said, "I address you at a moment 
+    unprecedented in the history of the Union". Hitler was on the march. War was raging 
+    in Europe. President Roosevelt's purpose was to wake up Congress and alert the 
+    American people that this was no ordinary time.
+    Good evening. If I were smart, I'd go home now. Mr. Speaker, Madam Vice President, 
+    members of Congress, my fellow Americans. In January 1941, Franklin Roosevelt came 
+    to this chamber to speak to the nation. And he said, "I address you at a moment 
+    unprecedented in the history of the Union". Hitler was on the march. War was raging 
+    in Europe. President Roosevelt's purpose was to wake up Congress and alert the 
+    American people that this was no ordinary time.
+    Good evening. If I were smart, I'd go home now. Mr. Speaker, Madam Vice President, 
+    members of Congress, my fellow Americans. In January 1941, Franklin Roosevelt came 
+    to this chamber to speak to the nation. And he said, "I address you at a moment 
+    unprecedented in the history of the Union". Hitler was on the march. War was raging 
+    in Europe. President Roosevelt's purpose was to wake up Congress and alert the 
+    American people that this was no ordinary time.
     """
 
-    # Generate cluster chunks
+    # Generate cluster chunks with position tracking
     chunks = chunker.split_text(test_text)
 
-    print("=== Cluster Semantic Chunking Results ===")
+    print("=== Cluster Semantic Chunking with Position Tracking Results ===")
     print(f"Generated {len(chunks)} cluster chunks:")
     print("=" * 80)
 
-    for i, (doc_id, chunk_text, token_count, unit_type, is_processed) in enumerate(chunks):
-        print(f"Chunk {i + 1}:")
-        print(f"  Doc ID: {doc_id}")
-        print(f"  Token Count: {token_count}")
-        print(f"  Unit Type: {unit_type}")
-        print(f"  Is Processed: {is_processed}")
-        print(f"  Text: {chunk_text}")
-        print("-" * 40)
-
-    print(f"\nTotal chunks: {len(chunks)}")
-    total_tokens = sum(token_count for _, _, token_count, _, _ in chunks)
-    print(f"Total tokens: {total_tokens}")
-    avg_tokens = total_tokens / len(chunks) if chunks else 0
-    print(f"Average tokens per chunk: {avg_tokens:.1f}")
+    for i, chunk_data in enumerate(chunks):
+        print(chunk_data)

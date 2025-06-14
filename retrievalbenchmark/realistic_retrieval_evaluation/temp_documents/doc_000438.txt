@@ -1,0 +1,2 @@
+Title: Host shifts result in parallel genetic changes when viruses evolve in closely related species
+Passage: One mutation rose to a high frequency across all the host species . This is unlikely to be an error in the genome sequencing, as it did not occur when we sequenced the ancestral virus. This may have been due to natural selection favouring this change in all species, perhaps because there was a strongly deleterious mutation at this site in the virus we cloned or due to the virus going from cell culture to being passaged in vivo.

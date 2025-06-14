@@ -449,7 +449,7 @@ class CommunityDetection:
             logger.warning(f"Deleting {len(communities_to_delete)} communities that failed after all attempts or exceeded token limits...")
             await self._delete_failed_communities(list(communities_to_delete))
 
-        # Run the embedder only for the communities that have successfully received a summary
+        # Run the embedder_mlr_test only for the communities that have successfully received a summary
         # and were not marked for deletion.
         logger.info("Triggering CommunityGroupEmbedder after community summarization and cleanup.")
         community_group_embedder = CommunityGroupEmbedder()

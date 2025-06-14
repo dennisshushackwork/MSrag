@@ -33,12 +33,7 @@ class EntityDataGenerator(Postgres):
     def generate_random_embedding(self, dimension: int = 256) -> List[float]:
         """Generate a random normalized embedding vector"""
         # Generate random vector
-        vector = np.random.normal(0, 1, dimension).astype(np.float32)
-        # Normalize to unit vector (common practice for embeddings)
-        norm = np.linalg.norm(vector)
-        if norm > 0:
-            vector = vector / norm
-        return vector.tolist()
+        return None
 
     def insert_entities_batch(self, start_id: int, batch_size: int = 1000) -> bool:
         """Insert a batch of entities with random embeddings"""

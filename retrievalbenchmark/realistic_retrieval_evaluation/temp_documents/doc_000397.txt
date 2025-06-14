@@ -1,0 +1,2 @@
+Title: The social benefits of private infectious disease-risk mitigation
+Passage: The first two axioms imply that P is a matrix of conditional probabilities, and the third implies that it is symmetric.

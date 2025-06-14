@@ -20,3 +20,13 @@ cd ..
 git clone https://huggingface.co/google/gemma-3-1b-it
 cd gemma-3-1b-it
 git lfs pull
+
+# Downloading qwen embedder_mlr_test:
+cd ..
+git clone https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+git lfs pull
+
+# Download and save re-ranker:
+cd ..
+git clone https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
+git lfs pull

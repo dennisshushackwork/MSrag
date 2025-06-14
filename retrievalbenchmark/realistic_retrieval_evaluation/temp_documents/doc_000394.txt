@@ -1,0 +1,2 @@
+Title: HIV-1 Replication and the Cellular Eukaryotic Translation Apparatus
+Passage: Once in the cytoplasm, mRNAs undergo a CBC-mediated pioneer round of translation, which is important for the quality control of the transcript . CBC is then displaced from the m 7 G and mRNAs are activated by the eukaryotic initiation factor 4F complex and eIF4B . Thus, mRNA acquires a "closed-loop" structure, required for an optimal mRNA recruitment into the 43S pre-initiation complex . This conformation is achieved by the simultaneous binding of PABP -binding protein) and eIF4E to eIF4G .

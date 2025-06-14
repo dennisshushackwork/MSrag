@@ -1,0 +1,2 @@
+Title: Naturally-Occurring Genetic Variants in Human DC-SIGN Increase HIV-1 Capture, Cell-Transfer and Risk of Mother-To-Child Transmission
+Passage: Given the presence of DC-SIGN in the placenta and its known interaction with HIV-1, we hypothesized that polymorphism affecting its expression or function might influence the risk of MTCT of HIV-1. Here, we report significant associations between DC-SIGN genetic variants that modulate DC-SIGN expression in placental macrophages, promote HIV-1 capture and transmission to T cells and increase risk of MTCT among Zimbabwean infants.

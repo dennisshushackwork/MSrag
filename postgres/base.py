@@ -39,4 +39,37 @@ class Postgres:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.conn.close()
 
+    def test_specific(self, chunk_id, emb):
+        """"""
+        query = """
+        SELECT  1 - (chunk_emb <=> %s::vector) as score
+        FROM Chunk
+        Where chunk_id = %s"""
+        with self.conn.cursor() as cur:
+            cur.execute(query, (emb, chunk_id))
+            print(cur.fetchone())
 
+    def test(self, emb):
+        """Returns the chunk by id. This is implemented for the failback strategy"""
+        query = """
+                  SELECT  1 - (chunk_emb <=> %s::vector) as score
+                  FROM Chunk 
+                  ORDER BY score DESC
+                  """
+        with self.conn.cursor() as cur:
+            cur.execute(query, (emb,))
+            chunk = cur.fetchall()
+            print(chunk)
+            print("-------")
+            print(len(chunk))
+            print("------")
+
+    def count_chunk(self):
+        """Returns the chunk by id. This is implemented for the failback strategy"""
+        query = """
+                  SELECT COUNT(chunk_id) FROM Chunk
+                  """
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            chunk = cur.fetchone()
+            print(chunk)

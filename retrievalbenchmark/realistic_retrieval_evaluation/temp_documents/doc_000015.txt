@@ -1,0 +1,2 @@
+Title: Performance and workflow assessment of six nucleic acid extraction technologies for use in resource limited settings
+Passage: ASSUR calculated each plot were equally weighted and the average of these parameters were calculated for each target microbe. These averages were then pooled and re-averaged based on the sample type and also for all three sample types and these values used to rank developers in terms of ASSUR.

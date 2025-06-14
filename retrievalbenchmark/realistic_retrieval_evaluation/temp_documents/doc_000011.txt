@@ -1,0 +1,1 @@
+[["in millions", "dec . 312012", "dec . 312011"], ["total consumer lending ( a )", "$ 2318", "$ 1798"], ["total commercial lending", "541", "405"], ["total tdrs", "$ 2859", "$ 2203"], ["nonperforming", "$ 1589", "$ 1141"], ["accruing ( b )", "1037", "771"], ["credit card ( c )", "233", "291"], ["total tdrs", "$ 2859", "$ 2203"]]

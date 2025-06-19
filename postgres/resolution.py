@@ -4,7 +4,7 @@ This class is specifically designed for the entity Resolution workflow.
 # External imports
 import logging
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values, DictCursor
 
@@ -31,9 +31,10 @@ class ResolutionQueries(Postgres):
     def load_entity_batch(self, offset: int, limit: int) -> Tuple[np.ndarray, List[int]]:
         """
         Load a batch of entity embeddings from database
+        Fixed for pgvector VECTOR type with psycopg2
         """
         query = """
-        SELECT entity_id, entity_emb::float[] as embedding
+        SELECT entity_id, entity_emb as embedding
         FROM Entity
         WHERE entity_emb IS NOT NULL
         ORDER BY entity_id
@@ -42,10 +43,46 @@ class ResolutionQueries(Postgres):
         with self.conn.cursor(cursor_factory=DictCursor) as cur:
             cur.execute(query, (limit, offset))
             results = cur.fetchall()
+
         if not results:
             return np.array([]), []
+
         entity_ids = [r['entity_id'] for r in results]
-        embeddings = np.array([r['embedding'] for r in results], dtype=np.float32)
+        embeddings_list = []
+
+        for r in results:
+            embedding_data = r['embedding']
+
+            try:
+                if isinstance(embedding_data, str):
+                    # pgvector returns vectors as strings like '[0.1,0.2,0.3]'
+                    # Remove brackets and parse
+                    cleaned_str = embedding_data.strip('[]')
+                    values = [float(x.strip()) for x in cleaned_str.split(',')]
+                    embeddings_list.append(values)
+                elif hasattr(embedding_data, '__iter__'):
+                    # If it's already iterable (list, array, etc.)
+                    embeddings_list.append([float(x) for x in embedding_data])
+                else:
+                    logger.error(f"Unexpected embedding type: {type(embedding_data)}")
+                    continue
+
+            except Exception as e:
+                logger.error(f"Failed to parse embedding for entity {r['entity_id']}: {e}")
+                logger.error(f"Embedding data: {embedding_data}")
+                continue
+
+        if not embeddings_list:
+            logger.warning("No valid embeddings found in batch")
+            return np.array([]), []
+
+        embeddings = np.array(embeddings_list, dtype=np.float32)
+
+        # Validate dimensions
+        if embeddings.shape[1] != 256:
+            logger.error(f"Expected 256 dimensions, got {embeddings.shape[1]}")
+
+        logger.info(f"Successfully loaded {len(embeddings)} embeddings with shape {embeddings.shape}")
         return embeddings, entity_ids
 
     def get_entity_id_batch(self, offset: int, limit: int) -> List[int]:

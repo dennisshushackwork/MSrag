@@ -13,3 +13,10 @@ docker run --runtime nvidia --gpus all \
     --ipc=host \
     vllm/vllm-openai:latest \
     --model gaunernst/gemma-3-12b-it-qat-compressed-tensors
+
+
+docker run --runtime nvidia --gpus all \
+    vllm/vllm-openai:latest \
+    --model gaunernst/gemma-3-12b-it-qat-compressed-tensors \
+    --max-model-len 16000  \
+    --gpu-memory-utilization 0.5  

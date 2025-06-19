@@ -171,3 +171,15 @@ class PopulateQueries(Postgres):
                 logger.exception(f"Bulk insert relationships error: {e}")
 
     # -------------------------------------------------------------------------------------------------------- #
+    def check_similarity(self, emb):
+        with self.conn.cursor() as cur:
+            query = """
+                     SELECT 
+                     entity_name
+                     FROM Entity
+                     ORDER BY 1-(entity_emb <=> %s::vector) DESC
+                     LIMIT 10;
+                    """
+            cur.execute(query, (emb,))
+            result = cur.fetchall()
+            return result

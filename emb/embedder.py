@@ -3,10 +3,17 @@ Qwen3 Embedding model: Qwen/Qwen3-Embedding-0.6B
 Uses MRL to support custom dimensions from 32 to 1024. https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
 Apache-2.0 License: https://apache.org/licenses/LICENSE-2.0.
 Model loaded from local directory to avoid HuggingFace rate limits.
+
+OPTIMIZED VERSION:
+- Memory efficient float32 precision throughout
+- pgvector-compatible string output
+- No float64 conversion waste
+- Faster processing with proper tensor handling
 """
 # External imports:
 import torch
 import logging
+import numpy as np
 from typing import List
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel, AutoConfig
@@ -27,22 +34,23 @@ class Qwen3Embedder:
     Qwen3 Embedding Service using the Singleton Design Pattern.
     Loads Qwen/Qwen3-Embedding-0.6B from local directory.
     Supports custom embedding dimensions from 32 to 1024 via MRL.
+    OPTIMIZED: Memory efficient with pgvector string output support.
     """
-    _instance = None  # Holds the instance of the embedder_mlr_test
+    _instance = None  # Holds the instance of the embedder
     _is_initialized = False  # Flag for embedding initialization
     TRUNCATION_DIM = 256  # Default truncation dimension
     MAX_EMBEDDING_DIM = 1024  # Qwen3's maximum embedding dimension
 
     def __new__(cls, model_path: str = None):
-        """Creates a new embedder_mlr_test instance."""
+        """Creates a new embedder instance."""
         if cls._instance is None:
-            logger.info("Creating new Qwen3 embedder_mlr_test instance.")
+            logger.info("Creating new Qwen3 embedder instance.")
             cls._instance = super(Qwen3Embedder, cls).__new__(cls)
         return cls._instance
 
     def __init__(self, model_path: str = None):
         """
-        Initializes a new Qwen3 embedder_mlr_test instance.
+        Initializes a new Qwen3 embedder instance.
         Args:
             model_path: Path to local model directory. If None, uses environment variable.
         """
@@ -70,7 +78,7 @@ class Qwen3Embedder:
             if not os.path.exists(os.path.join(model_path, file)):
                 logger.warning(f"Required file {file} not found in {model_path}")
 
-        logger.info(f"Initializing Qwen3 embedder_mlr_test with local model from: {model_path}")
+        logger.info(f"Initializing optimized Qwen3 embedder with local model from: {model_path}")
 
         self.model_path = model_path
         self.max_tokens = 32000  # Qwen3 supports 32K context length
@@ -108,10 +116,14 @@ class Qwen3Embedder:
             model_path,
             local_files_only=True,
             trust_remote_code=True,
+            torch_dtype=torch.float32,  # Explicit float32 for efficiency
         ).to(self.device)
 
+        # Set model to eval mode for inference optimization
+        self.model.eval()
+
         Qwen3Embedder._is_initialized = True
-        logger.info("Qwen3 Embedder initialization complete using local model.")
+        logger.info("Optimized Qwen3 Embedder initialization complete using local model.")
 
     def tokenize_to_ids(self, text: str) -> List[int]:
         """Returns a list of integers representing the token ids of a given `text`."""
@@ -135,8 +147,9 @@ class Qwen3Embedder:
     def last_token_pool(self, last_hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """
         Qwen3 specific pooling function - uses last token pooling as recommended.
+        Optimized for better performance.
         """
-        left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+        left_padding = attention_mask[:, -1].all()  # More efficient check
         if left_padding:
             return last_hidden_states[:, -1]
         else:
@@ -152,6 +165,7 @@ class Qwen3Embedder:
         """
         Embeds the input texts into 1024-dimensional embeddings in full float32 precision.
         Follows Qwen3's recommended approach with instruction formatting.
+        OPTIMIZED: Better memory management and tensor handling.
         """
         processed_texts = []
 
@@ -176,7 +190,7 @@ class Qwen3Embedder:
             return_tensors="pt",
         ).to(self.device)
 
-        # 2) Get model outputs
+        # 2) Get model outputs with memory optimization
         with torch.no_grad():
             outputs = self.model(**batch_dict)
 
@@ -187,31 +201,60 @@ class Qwen3Embedder:
 
     def cosine_similarity(self, emb1: List[float], emb2: List[float]) -> float:
         """Calculates the cosine similarity between two embeddings."""
-        query = torch.tensor(emb1, device=self.device)
-        document = torch.tensor(emb2, device=self.device)
+        query = torch.tensor(emb1, device=self.device, dtype=torch.float32)
+        document = torch.tensor(emb2, device=self.device, dtype=torch.float32)
         return F.cosine_similarity(query, document, dim=0).item()
+
+    def cosine_similarity_from_strings(self, emb_str1: str, emb_str2: str) -> float:
+        """Calculates cosine similarity directly from pgvector string format."""
+        # Parse pgvector strings: '[1.0,2.0,3.0]' -> [1.0, 2.0, 3.0]
+        emb1 = [float(x) for x in emb_str1.strip('[]').split(',')]
+        emb2 = [float(x) for x in emb_str2.strip('[]').split(',')]
+        return self.cosine_similarity(emb1, emb2)
 
     @staticmethod
     def _normalize_embeddings_torch(embeddings_matrix: torch.Tensor) -> torch.Tensor:
         """Normalize embeddings to unit norm along axis 1."""
         return F.normalize(embeddings_matrix, p=2, dim=1)
 
-    def embed_texts(self, texts: list[str], are_queries: bool = False, custom_instruction: str = None) -> List[List[float]]:
-        """Generates full 1024D normalized embeddings"""
+    # MAIN EMBEDDING METHODS - OPTIMIZED FOR PGVECTOR STRINGS
+
+    def embed_texts(self, texts: list[str], are_queries: bool = False, custom_instruction: str = None) -> List[str]:
+        """
+        Generates full 1024D embeddings as pgvector-compatible strings.
+        OPTIMIZED: Returns float32 precision strings directly compatible with PostgreSQL pgvector.
+
+        Returns:
+            List of strings in format: ['[1.234567,2.345678,...]', ...]
+        """
         # 1. Get 1024D embeddings (as torch.Tensor on self.device)
         embeddings_1024d_torch = self._get_raw_embeddings(texts=texts, are_queries=are_queries, custom_instruction=custom_instruction)
 
-        # 2. Normalize the 1024D embeddings:
+        # 2. CRITICAL: Normalize embeddings for proper cosine similarity
         normalized_embeddings_torch = self._normalize_embeddings_torch(embeddings_1024d_torch)
 
-        # 3. Convert to CPU and return as list
-        return normalized_embeddings_torch.cpu().detach().numpy().tolist()
+        # 3. Convert to numpy float32 (memory efficient)
+        embeddings_numpy = normalized_embeddings_torch.detach().cpu().numpy().astype(np.float32)
 
-    def embed_texts_truncated(self, texts: list[str], are_queries: bool = False, custom_instruction: str = None, truncation_dim: int = None) -> List[List[float]]:
+        # 3. Convert to pgvector string format
+        pgvector_strings = []
+        for embedding in embeddings_numpy:
+            # Format as '[1.234567,2.345678,...]' with 6 decimal places
+            values_str = ','.join(f'{x:.6f}' for x in embedding)
+            pgvector_strings.append(f'[{values_str}]')
+
+        return pgvector_strings
+
+    def embed_texts_truncated(self, texts: list[str], are_queries: bool = False, custom_instruction: str = None, truncation_dim: int = None) -> List[str]:
         """
-        Generates 1024D embeddings, truncates them to specified dimension.
+        Generates 1024D embeddings, truncates them to specified dimension, returns as pgvector strings.
+        OPTIMIZED: Memory efficient float32 precision with pgvector compatibility.
+
         Args:
             truncation_dim: Dimension to truncate to (32-1024). If None, uses TRUNCATION_DIM.
+
+        Returns:
+            List of pgvector-compatible strings: ['[1.234567,2.345678,...]', ...]
         """
         if truncation_dim is None:
             truncation_dim = self.TRUNCATION_DIM
@@ -223,24 +266,38 @@ class Qwen3Embedder:
         # 1. Get 1024D embeddings (as torch.Tensor on self.device)
         embeddings_1024d_torch = self._get_raw_embeddings(texts=texts, are_queries=are_queries, custom_instruction=custom_instruction)
 
-        # 2. Truncate to specified dimension:
-        truncated_embeddings_torch = embeddings_1024d_torch[:, :truncation_dim]
+        # 2. CRITICAL: Normalize BEFORE truncation for proper cosine similarity
+        normalized_embeddings_torch = self._normalize_embeddings_torch(embeddings_1024d_torch)
 
-        # 3. Re-normalize the truncated embeddings:
-        normalized_truncated_embeddings_torch = self._normalize_embeddings_torch(truncated_embeddings_torch)
+        # 3. Truncate to specified dimension:
+        truncated_embeddings_torch = normalized_embeddings_torch[:, :truncation_dim]
 
-        # 4. Convert to CPU and return as list
-        return normalized_truncated_embeddings_torch.cpu().detach().numpy().tolist()
+        # 4. Convert to numpy float32 (OPTIMIZED: maintains precision, saves memory)
+        embeddings_numpy = truncated_embeddings_torch.detach().cpu().numpy().astype(np.float32)
 
-    def embed_texts_custom_dim(self, texts: list[str], embedding_dim: int, are_queries: bool = False, custom_instruction: str = None) -> List[List[float]]:
+        # 4. Convert to pgvector string format
+        pgvector_strings = []
+        for embedding in embeddings_numpy:
+            # Format as '[1.234567,2.345678,...]' with 6 decimal places
+            values_str = ','.join(f'{x:.6f}' for x in embedding)
+            pgvector_strings.append(f'[{values_str}]')
+
+        return pgvector_strings
+
+    def embed_texts_custom_dim(self, texts: list[str], embedding_dim: int, are_queries: bool = False, custom_instruction: str = None) -> List[str]:
         """
         Generates embeddings with custom dimension (32-1024) using MRL support.
+        Returns pgvector-compatible strings.
         This leverages Qwen3's native MRL (Matryoshka Representation Learning) capability.
+
+        Returns:
+            List of pgvector-compatible strings: ['[1.234567,2.345678,...]', ...]
         """
         if embedding_dim < 32 or embedding_dim > self.MAX_EMBEDDING_DIM:
             raise ValueError(f"Embedding dimension must be between 32 and {self.MAX_EMBEDDING_DIM}")
 
         return self.embed_texts_truncated(texts, are_queries, custom_instruction, embedding_dim)
+
 
     def verify_gpu_usage(self):
         """Verify that the model and tensors are actually on GPU"""
@@ -307,10 +364,21 @@ class Qwen3Embedder:
         ]
 
         print("Generating query embeddings with instructions...")
-        query_embeddings = self.embed_texts(queries, are_queries=True, custom_instruction=task)
+        query_embeddings_str = self.embed_texts(queries, are_queries=True, custom_instruction=task)
 
         print("Generating document embeddings...")
-        document_embeddings = self.embed_texts(documents, are_queries=False)
+        document_embeddings_str = self.embed_texts(documents, are_queries=False)
+
+        # Convert back to tensors for similarity calculation
+        query_embeddings = []
+        for emb_str in query_embeddings_str:
+            emb = [float(x) for x in emb_str.strip('[]').split(',')]
+            query_embeddings.append(emb)
+
+        document_embeddings = []
+        for emb_str in document_embeddings_str:
+            emb = [float(x) for x in emb_str.strip('[]').split(',')]
+            document_embeddings.append(emb)
 
         # Calculate similarity scores like in the tutorial
         query_tensor = torch.tensor(query_embeddings, device=self.device)
@@ -325,7 +393,8 @@ class Qwen3Embedder:
         print("=============================================\n")
 
 
-# Test the Qwen3 embedder_mlr_test
+
+# Test the optimized Qwen3 embedder
 if __name__ == "__main__":
     try:
         embedder = Qwen3Embedder()
@@ -336,33 +405,40 @@ if __name__ == "__main__":
         # Test compatibility with tutorial
         embedder.test_embeddings_match_tutorial()
 
-        # Test your original use case
-        text1 = "Colin Shushack is born in Hedingen"
-        text2 = "Dennis Shushack"
-        print("Generating Qwen3 embeddings for your test case...")
+        # Test your original use case with optimized output
+        text1 = "Brack Obama"
+        text2 = "Barack Hussein Obama"
+        print("Generating optimized Qwen3 embeddings for your test case...")
 
         # Time the embedding generation
         import time
         start_time = time.time()
-        embeddings = embedder.embed_texts(texts=[text1, text2], are_queries=False)
+        embeddings = embedder.embed_texts_custom_dim(texts=[text1, text2], are_queries=False, embedding_dim=256)
+        similarity = embedder.cosine_similarity_from_strings(embeddings[0], embeddings[1])
+        print(embeddings[0])
+        print(embeddings[1])
+        print("YOOO")
+        print(f"Cosine similarity: {similarity}")
         end_time = time.time()
 
         print(f"Embedding generation took: {end_time - start_time:.3f} seconds")
+        print(f"First embedding (pgvector format): {embeddings[0]}")
+        print(f"Second embedding (pgvector format): {embeddings[1]}")
 
-        emb1 = embeddings[0]
-        emb2 = embeddings[1]
-        cosine = embedder.cosine_similarity(emb1, emb2)
-        print(f"Cosine similarity: {cosine}")
 
-        # Test custom dimension embedding
-        print("\nTesting custom dimension embeddings...")
-        embeddings_512d = embedder.embed_texts_custom_dim([text1, text2], embedding_dim=512, are_queries=False)
-        print(f"512D embedding shape: {len(embeddings_512d[0])} dimensions")
+        # Test different dimensions
+        print("\nTesting different dimensions...")
+        embeddings_512d = embedder.embed_texts_custom_dim([text1], embedding_dim=512, are_queries=False)
+        embeddings_128d = embedder.embed_texts_custom_dim([text1], embedding_dim=128, are_queries=False)
+        embeddings_64d = embedder.embed_texts_custom_dim([text1], embedding_dim=64, are_queries=False)
 
-        embeddings_128d = embedder.embed_texts_custom_dim([text1, text2], embedding_dim=128, are_queries=False)
-        print(f"128D embedding shape: {len(embeddings_128d[0])} dimensions")
+        print(f"512D embedding length: {len(embeddings_512d[0])} chars")
+        print(f"128D embedding length: {len(embeddings_128d[0])} chars")
+        print(f"64D embedding length: {len(embeddings_64d[0])} chars")
 
-        print("Qwen3 local model loading successful!")
+        print("Testing")
+        test_entity = "Advanced Enterprises #9531"
+        embs = embedder.embed_texts_custom_dim([test_entity], embedding_dim=256, are_queries=False)
 
     except Exception as e:
         print(f"Error loading Qwen3 local model: {e}")

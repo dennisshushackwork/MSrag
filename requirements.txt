@@ -15,5 +15,5 @@ nltk
 kuzu
 pydantic
 pip-licenses
-
+rapidfuzz
 

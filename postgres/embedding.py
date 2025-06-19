@@ -102,23 +102,24 @@ class EmbeddingQueries(Postgres):
             return cur.fetchall()
 
     def update_entities_emb(self, update_values: List[tuple]) -> None:
-        """Bulk updates entities with new embeddings. Expects update_values as a list of tuples: (id, emb)"""
+        """Bulk updates entities with new embeddings."""
         if not update_values:
             return
-
         with self.conn.cursor() as cur:
             query = """
-                       UPDATE Entity AS e
-                       SET entity_emb = v.entity_emb,
-                           entity_embed = false
-                       FROM (VALUES %s) AS v(entity_id, entity_emb)
-                       WHERE e.entity_id = v.entity_id
-                   """
+                UPDATE Entity AS e
+                SET entity_emb = v.entity_emb::vector, entity_embed = false
+                FROM (VALUES %s) AS v(entity_id, entity_emb)
+                WHERE e.entity_id = v.entity_id
+            """
             try:
-                execute_values(cur, query, update_values, template=None, page_size=100)
+                execute_values(cur, query, update_values, template=None, page_size=1000)
                 logger.info(f"Bulk updated embeddings for {len(update_values)} entities.")
+                self.conn.commit()
             except Exception as e:
                 logger.exception(f"Bulk update embeddings error: {e}")
+                self.conn.rollback()
+                raise
 
     # ----------------------------- Relationship specific queries (embedding db) -------------------------- #
     def count_rels_to_embed(self) -> int:
